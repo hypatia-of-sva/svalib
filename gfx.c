@@ -505,7 +505,7 @@ struct g_gl {
     bool                                initialized;
     enum { GLES2, GL3Core, GL2}         version;
     gfx_fixed_function_state_t          state;
-    gfx_image_t                         screenshot;
+    gfx_image_data_rgba_t               screenshot;
     gfx_driver_limits_t                 limits;
     /* all functions supported by all three of GL ES 2.0, GL 3+ Core and GL 2.1 */
     PFNGLACTIVETEXTUREPROC              ActiveTexture;
@@ -2107,8 +2107,8 @@ gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window
 gfx_result_t gfx_exit(void) {
     g_gl.Finish();
     
-    if(g_gl.screenshot.RGBA_LE_data != NULL) {
-        free(g_gl.screenshot.RGBA_LE_data);
+    if(g_gl.screenshot.pixel_data != NULL) {
+        free(g_gl.screenshot.pixel_data);
     }
     
     glfwDestroyWindow(g_glfw.window);
@@ -2179,7 +2179,7 @@ gfx_result_t gfx_monitor_switch(int monitor_id, gfx_video_mode_t mode, bool full
     /* (re)set screenshot buffer for gfx_screenshot */
     g_gl.screenshot.width = g_gl.state.viewport.width;
     g_gl.screenshot.height = g_gl.state.viewport.height;
-    g_gl.screenshot.RGBA_LE_data = realloc(g_gl.screenshot.RGBA_LE_data, sizeof(uint32_t)*g_gl.screenshot.width*g_gl.screenshot.height);
+    g_gl.screenshot.pixel_data = realloc(g_gl.screenshot.pixel_data, sizeof(uint32_t)*g_gl.screenshot.width*g_gl.screenshot.height);
     
     
     return GFX_OK;
@@ -3286,7 +3286,7 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
         /* (re)set screenshot buffer for gfx_screenshot */
         g_gl.screenshot.width = g_gl.state.viewport.width;
         g_gl.screenshot.height = g_gl.state.viewport.height;
-        g_gl.screenshot.RGBA_LE_data = realloc(g_gl.screenshot.RGBA_LE_data, sizeof(uint32_t)*g_gl.screenshot.width*g_gl.screenshot.height);
+        g_gl.screenshot.pixel_data = realloc(g_gl.screenshot.pixel_data, sizeof(uint32_t)*g_gl.screenshot.width*g_gl.screenshot.height);
     }
 
     /* check if we actually could update the state */
@@ -3335,13 +3335,13 @@ gfx_result_t gfx_clear(void) {
 }
 
 
-gfx_result_t gfx_screenshot(gfx_image_t* img) {
+gfx_result_t gfx_screenshot(gfx_image_data_rgba_t* img) {
     assert(img != NULL);+
     /* we are limited to RGBA32 bc GL ES 2 only has this and non-standard formats
        we only do full screenshots since users need to copy out the data anyway,
        and this way we can maintain an internal buffer with minimal reallocing
     */
-    g_gl.ReadPixels(g_gl.state.viewport.x, g_gl.state.viewport.y, g_gl.screenshot.width, g_gl.screenshot.width, GL_RGBA, GL_UNSIGNED_BYTE, (void*) g_gl.screenshot.RGBA_LE_data);
+    g_gl.ReadPixels(g_gl.state.viewport.x, g_gl.state.viewport.y, g_gl.screenshot.width, g_gl.screenshot.width, GL_RGBA, GL_UNSIGNED_BYTE, (void*) g_gl.screenshot.pixel_data);
     img[0] = g_gl.screenshot;
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
@@ -3362,26 +3362,68 @@ gfx_result_t gfx_driver_limits(const gfx_driver_limits_t** limits) {
 }
 
 
+typedef enum gfx_internal_buffer_type_t {
+    GFX_BUFFER_TYPE_VERTEX_DATA_BUFFER = 0,
+    GFX_BUFFER_TYPE_INDEX_BUFFER = 1,
+    GFX_BUFFER_TYPE_MAX_ENUM = 0x7f
+} gfx_internal_buffer_type_t;
 
 
-gfx_result_t gfx_buffer_create(gfx_buffer_t* buffer, size_t size, void* ptr) {
-    assert(buffer != NULL && ptr != NULL && size > 0);
-    
-    GLenum target, targetinfo, usage_pattern;
-    GLuint id;
-    switch(buffer[0].type) {
-        case GFX_BUFFER_TYPE_VERTEX_DATA_BUFFER:
-            target = GL_ARRAY_BUFFER;
+static gfx_result_t gfx_buffer_bind_safe(GLenum target, GLuint old_id, GLuint new_id) {
+    GLenum targetinfo;
+    GLuint i;
+    switch(target) {
+        case GL_ARRAY_BUFFER;
             targetinfo = GL_ARRAY_BUFFER_BINDING;
             break;
-        case GFX_BUFFER_TYPE_INDEX_BUFFER:
-            target = GL_ELEMENT_ARRAY_BUFFER;
+        case GL_ELEMENT_ARRAY_BUFFER;
             targetinfo = GL_ELEMENT_ARRAY_BUFFER_BINDING;
             break;
         default:
             return GFX_ERROR_INVALID_PARAM;
     }
-    switch(buffer[0].usage) {
+
+    g_gl.GetIntegerv(targetinfo, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != old_id) {
+        return GFX_ERROR_API_OTHER;
+    }
+
+    g_gl.BindBuffer(target, new_id);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+
+    g_gl.GetIntegerv(targetinfo, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != new_id) {
+        return GFX_ERROR_API_OTHER;
+    }
+
+    return GFX_OK;
+}
+static gfx_result_t gfx_buffer_create_generic(gfx_internal_buffer_type_t type, gfx_buffer_usage_t usage, size_t size, void* ptr, GLuint* id) {
+    assert(ptr != NULL && size > 0);
+    
+    GLenum target, usage_pattern;
+    GLuint id;
+    gfx_result_t r;
+
+    switch(type) {
+        case GFX_BUFFER_TYPE_VERTEX_DATA_BUFFER:
+            target = GL_ARRAY_BUFFER;
+            break;
+        case GFX_BUFFER_TYPE_INDEX_BUFFER:
+            target = GL_ELEMENT_ARRAY_BUFFER;
+            break;
+        default:
+            return GFX_ERROR_INVALID_PARAM;
+    }
+    switch(usage) {
         case GFX_BUFFER_USAGE_MUTABLE:
             usage_pattern = GL_DYNAMIC_DRAW;
             break;
@@ -3395,24 +3437,15 @@ gfx_result_t gfx_buffer_create(gfx_buffer_t* buffer, size_t size, void* ptr) {
             return GFX_ERROR_INVALID_PARAM;
     }
     
-    g_gl.GetIntegerv(targetinfo, &id);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(id != 0) {
-        return GFX_ERROR_API_OTHER;
-    }
     
     g_gl.GenBuffers(1, &id);
     if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
         return GFX_ERROR_UNKNOWN;
     }
-    
-    g_gl.BindBuffer(target, id);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    
+
+    r = gfx_buffer_bind_safe(target, 0, id);
+    if(r != GFX_OK) { return r; }
+
     g_gl.BufferData(target, size, ptr, usage_pattern);
     switch(g_gl.GetError()) {
         case GL_NO_ERROR:
@@ -3424,60 +3457,44 @@ gfx_result_t gfx_buffer_create(gfx_buffer_t* buffer, size_t size, void* ptr) {
             g_gl.BindBuffer(target, 0);
             return GFX_ERROR_UNKNOWN;
     }
-    
-    g_gl.BindBuffer(target, 0);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    
-    buffer[0].id = id;
-    buffer[0].size = size;
+
+    r = gfx_buffer_bind_safe(target, id, 0);
+    if(r != GFX_OK) { return r; }
     
     return GFX_OK;
 }
-gfx_result_t gfx_buffer_rewrite(gfx_buffer_t buffer, size_t offset, size_t size, void* ptr) {
+static gfx_result_t gfx_buffer_rewrite_generic(gfx_internal_buffer_type_t type, gfx_buffer_usage_t init_usage, size_t init_size, GLuint id, size_t offset, size_t size, void* ptr) {
     assert(offset > 0 && size > 0 && ptr != NULL);
-    
-    GLenum target, targetinfo, usage_pattern;
-    GLuint id;
-    switch(buffer[0].type) {
+    int i;
+    GLenum target;
+    gfx_result_t r;
+
+    switch(type) {
         case GFX_BUFFER_TYPE_VERTEX_DATA_BUFFER:
             target = GL_ARRAY_BUFFER;
-            targetinfo = GL_ARRAY_BUFFER_BINDING;
             break;
         case GFX_BUFFER_TYPE_INDEX_BUFFER:
             target = GL_ELEMENT_ARRAY_BUFFER;
-            targetinfo = GL_ELEMENT_ARRAY_BUFFER_BINDING;
             break;
         default:
             return GFX_ERROR_INVALID_PARAM;
     }
     
-    if(offset+size > buffer.size
-            || buffer.usage != GFX_BUFFER_USAGE_MUTABLE
-            || g_gl.IsBuffer(buffer.id) != GL_TRUE) {
+    if(offset+size > init_size
+            || init_usage != GFX_BUFFER_USAGE_MUTABLE
+            || g_gl.IsBuffer(id) != GL_TRUE) {
         return GFX_ERROR_INVALID_PARAM;
     }
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
     
-    g_gl.GetIntegerv(targetinfo, &id);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(id != 0) {
-        return GFX_ERROR_API_OTHER;
-    }
+
+    r = gfx_buffer_bind_safe(target, 0, id);
+    if(r != GFX_OK) { return r; }
     
-    g_gl.BindBuffer(target, id);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    
-    int i;
     g_gl.GetBufferParameteriv(target, GL_BUFFER_SIZE, &i);
-    if(i != buffer.size) {
+    if(i != init_size) {
         g_gl.BindBuffer(target, 0);
         return GFX_ERROR_API_OTHER;
     }
@@ -3493,23 +3510,21 @@ gfx_result_t gfx_buffer_rewrite(gfx_buffer_t buffer, size_t offset, size_t size,
         g_gl.BindBuffer(target, 0);
         return GFX_ERROR_API_OTHER;
     }
-    
-    g_gl.BindBuffer(target, 0);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
+
+    r = gfx_buffer_bind_safe(target, id, 0);
+    if(r != GFX_OK) { return r; }
     
     return GFX_OK;
 }
-gfx_result_t gfx_buffer_destroy(gfx_buffer_t buffer) {
-    if(g_gl.IsBuffer(buffer.id) != GL_TRUE) {
+static gfx_result_t gfx_buffer_destroy_generic(GLuint id) {
+    if(g_gl.IsBuffer(id) != GL_TRUE) {
         return GFX_ERROR_INVALID_PARAM;
     }
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
     
-    g_gl.DeleteBuffers(1, &buffer.id);
+    g_gl.DeleteBuffers(1, &id);
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
@@ -3518,15 +3533,39 @@ gfx_result_t gfx_buffer_destroy(gfx_buffer_t buffer) {
 }
 
 
-
-
-
-
-typedef enum gfx_texture_type_t {
-    GFX_TEXTURE_TYPE_2D = 0,
-    GFX_TEXTURE_TYPE_CUBE_MAP = 1,
-    GFX_TEXTURE_TYPE_MAX_ENUM = 0x7f
+gfx_result_t gfx_vertex_buffer_create(gfx_buffer_usage_t usage, size_t size, void* ptr, gfx_vertex_buffer_t* buffer) {
+    assert(buffer != NULL);
+    buffer[0].usage = usage;
+    buffer[0].size = size;
+    return gfx_buffer_create_generic(GFX_BUFFER_TYPE_VERTEX_DATA_BUFFER, usage, size, ptr, &(buffer[0].id));
 }
+gfx_result_t gfx_vertex_buffer_rewrite(gfx_vertex_buffer_t buffer, size_t offset, size_t size, void* ptr) {
+    return gfx_buffer_rewrite_generic(GFX_BUFFER_TYPE_VERTEX_DATA_BUFFER, buffer.usage, buffer.size, buffer.id, offset, size, ptr);
+}
+gfx_result_t gfx_vertex_buffer_destroy(gfx_vertex_buffer_t buffer) {
+    return gfx_buffer_destroy_generic(buffer.id);
+}
+
+gfx_result_t gfx_index_buffer_create(gfx_buffer_usage_t usage, size_t size, void* ptr, gfx_index_buffer_t* buffer) {
+    assert(buffer != NULL);
+    buffer[0].usage = usage;
+    buffer[0].size = size;
+    return gfx_buffer_create_generic(GFX_BUFFER_TYPE_INDEX_BUFFER, usage, size, ptr, &(buffer[0].id));
+}
+gfx_result_t gfx_index_buffer_rewrite(gfx_index_buffer_t buffer, size_t offset, size_t size, void* ptr) {
+    return gfx_buffer_rewrite_generic(GFX_BUFFER_TYPE_INDEX_BUFFER, buffer.usage, buffer.size, buffer.id, offset, size, ptr);
+}
+gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer) {
+    return gfx_buffer_destroy_generic(buffer.id);
+}
+
+
+
+
+
+
+
+
 typedef enum gfx_texture_zoom_mode_t {
     GFX_TEXTURE_ZOOM_MODE_NEAREST_ELEMENT = 0,
     GFX_TEXTURE_ZOOM_MODE_LINEAR_AVERAGE_OF_FOUR = 1,
@@ -3552,38 +3591,160 @@ typedef enum gfx_texture_image_data_format_t {
 typedef struct gfx_texture_image_data_t {
     gfx_texture_image_data_format_t format;
     union {
-        gfx_image_t rgba_data;
-        gfx_image_alphaless_t rgb_data;
+        gfx_image_data_rgba_t rgba_data;
+        gfx_image_data_rgb_t rgb_data;
     } data;
 } gfx_texture_image_data_t;
-typedef struct gfx_texture_initialization_data_t {
-    gfx_texture_type_t type;
-    struct {
-        gfx_texture_image_data_t data;
-    } surface_2d;
-    struct {
-        gfx_texture_image_data_t xp, yp, zp, xn, yn, zn;
-    } faces_cube_map;
-} gfx_texture_initialization_data_t
+typedef struct gfx_texture_image_dimensions_t {
+    int width, height;
+} gfx_texture_image_dimensions_t;
+
+typedef struct gfx_texture_config_t {
+    gfx_texture_zoom_mode_t magnifying_mode, minifying_mode;
+    gfx_texture_wrapping_mode_t horizontal_wrap, vertical_wrap;
+} gfx_texture_config_t;
+
 
 
 typedef struct gfx_texture_t {
-    
-    gfx_texture_zoom_mode_t magnifying_mode, minifying_mode;
-    gfx_texture_wrapping_mode_t horizontal_wrap, vertical_wrap;
+    gfx_texture_image_dimensions_t dimensions;
+    gfx_texture_config_t config;
+} gfx_texture_t;
+
+typedef struct gfx_cubemap_t {
+    struct { gfx_texture_image_dimensions_t x_pos, x_neg, y_pos, y_neg, z_pos, z_neg; } dimensions;
+    gfx_texture_config_t config;
 } gfx_texture_t;
 
 
 
+
+
+
+gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture);
+
+gfx_result_t gfx_texture_create(gfx_texture_image_data_t x_pos_data, gfx_texture_image_data_t x_neg_data,
+                                gfx_texture_image_data_t y_pos_data, gfx_texture_image_data_t y_neg_data,
+                                gfx_texture_image_data_t z_pos_data, gfx_texture_image_data_t z_neg_data, gfx_texture_config_t config, gfx_cubemap_t* cubemap);
+
+
+
+
+
+static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GLuint old_id, GLuint new_id) {
+    GLenum targetinfo, e;
+    GLuint i;
+    switch(target) {
+        case GL_TEXTURE_2D;
+            targetinfo = GL_TEXTURE_BINDING_2D;
+            break;
+        case GL_TEXTURE_CUBE_MAP;
+            targetinfo = GL_TEXTURE_BINDING_CUBE_MAP;
+            break;
+        default:
+            return GFX_ERROR_INVALID_PARAM;
+    }
+
+
+    g_gl.ActiveTexture(texture_unit);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+
+    g_gl.GetIntegerv(GL_ACTIVE_TEXTURE, &e);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(e != texture_unit) {
+        return GFX_ERROR_API_OTHER;
+    }
+
+    g_gl.GetIntegerv(targetinfo, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != old_id) {
+        return GFX_ERROR_API_OTHER;
+    }
+
+    g_gl.BindTexture(target, new_id);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+
+    g_gl.GetIntegerv(targetinfo, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != new_id) {
+        return GFX_ERROR_API_OTHER;
+    }
+
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_image_safe(GLenum image_target, gfx_texture_image_data_t image_data) {
+    GLenum format; GLsizei width, height; const void* ptr;
+    switch(image_data.format) {
+    case GFX_TEXTURE_IMAGE_DATA_FORMAT_RGBA:
+        format = GL_RGBA;
+        width = image_data.data.rgba_data.width;
+        height = image_data.data.rgba_data.height;
+        ptr = image_data.data.rgba_data.pixel_data;
+        break
+    case GFX_TEXTURE_IMAGE_DATA_FORMAT_RGB:
+        format = GL_RGB;
+        width = image_data.data.rgb_data.width;
+        height = image_data.data.rgb_data.height;
+        ptr = image_data.data.rgb_data.pixel_data;
+        break
+    }
+
+    g_gl.TexImage2D(image_target, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, ptr);
+}
+
+
+gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture) {
+    GLenum texture_unit;
+    GLuint id, i;
+    gfx_result_t r;
+
+
+    g_gl.GenTextures(1, &id);
+    if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
+        return GFX_ERROR_UNKNOWN;
+    }
+
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, 0, id);
+    if(r != GFX_OK) { return r; }
+
+
+    /* GL 2.1 mipmap generation hint: */
+
+
+    r = gfx_texture_image_safe(GL_TEXTURE_2D, data);
+    if(r != GFX_OK) { return r; }
+
+
+    /* GL 3+ and GL ES 2 mipmap generation: */
+
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+    if(r != GFX_OK) { return r; }
+
+    return GFX_OK;
+}
+
 /* unused GL functions and variables:
 
+
+actuall, we _do_ need glGenerateMipmap for GL 3 and GLES 2, but need to use glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE); for GL 2.1!
+See https://www.khronos.org/opengl/wiki/Common_Mistakes#Automatic_mipmap_generation
 
 
 
 
 texture portion:
 
-glActiveTexture , glBindTexture ,  , glCopyTexImage2D , glCopyTexSubImage2D , glDeleteTextures , glTexImage2D , , glTexSubImage2D 
+glCopyTexImage2D , glCopyTexSubImage2D , glDeleteTextures , glTexImage2D , , glTexSubImage2D
 
 glTexParameterf, glTexParameteri, glTexParameterfv, glTexParameteriv
     sets:
@@ -3593,14 +3754,8 @@ glTexParameterf, glTexParameteri, glTexParameterfv, glTexParameteriv
     GL_TEXTURE_WRAP_T (i.e. y) to GL_CLAMP_TO_EDGE, GL_MIRRORED_REPEAT, or GL_REPEAT
     
 
-glGenTextures 
 glGetTexParameter , glIsTexture
 
-
-
-GL_ACTIVE_TEXTURE               1e      for checking if state change worked
-GL_TEXTURE_BINDING_2D           1i      for checking if state change worked
-GL_TEXTURE_BINDING_CUBE_MAP     1i      for checking if state change worked
 
 
 

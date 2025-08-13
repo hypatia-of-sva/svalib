@@ -296,11 +296,6 @@ typedef enum gfx_stencil_operation_type_t {
     GFX_STENCIL_OPERATION_BIT_INVERT_CURRENT_VALUE                   = 7,
     GFX_STENCIL_OPERATION_MAX_ENUM                                   = 0x7f
 } gfx_stencil_operation_type_t;
-typedef enum gfx_buffer_type_t {
-    GFX_BUFFER_TYPE_VERTEX_DATA_BUFFER = 0,
-    GFX_BUFFER_TYPE_INDEX_BUFFER = 1,
-    GFX_BUFFER_TYPE_MAX_ENUM = 0x7f
-} gfx_buffer_type_t;
 typedef enum gfx_buffer_usage_t {
     GFX_BUFFER_USAGE_MUTABLE = 0,
     GFX_BUFFER_USAGE_CONST = 1,
@@ -357,27 +352,27 @@ typedef struct gfx_gamepad_state_t {
         Up, Right, Down, Left;
     float left_x, left_y, right_x, right_y, LT, RT;
 } gfx_gamepad_state_t;
-typedef struct gfx_image_t {
+typedef struct gfx_image_data_rgba_t {
     int width, height;
-    uint32_t* RGBA_LE_data;
-} gfx_image_t;
-typedef struct gfx_image_alphaless_t {
+    uint8_t* pixel_data;
+} gfx_image_data_rgba_t;
+typedef struct gfx_image_data_rgb_t {
     int width, height;
-    uint32_t* RGB_LE_data;
-} gfx_image_alphaless_t;
+    uint8_t* pixel_data;
+} gfx_image_data_rgb_t;
 typedef struct gfx_cursor_shape_t {
     bool is_standard_shape;
     union {
         gfx_standard_cursor_shape_t standard_shape;
         struct {
             xhotspot, yhotspot;
-            gfx_image_t image_data;
+            gfx_image_data_rgba_t image_data;
         } custom_shape_data;
     } data;
 } gfx_cursor_shape_t;
 typedef struct gfx_window_icon_t {
     int nr_icon_candidates;
-    gfx_image_t *per_icon_candidate_data;
+    gfx_image_data_rgba_t *per_icon_candidate_data;
 } gfx_window_icon_t;
 typedef struct gfx_fixed_function_state_t {
     struct {
@@ -446,13 +441,18 @@ typedef struct gfx_driver_limits_t {
     int max_vertex_attributes;
     int sample_buffers, sample_coverage_mask_size, subpixel_bits;
 } gfx_driver_limits_t;
-typedef struct gfx_buffer_t {
+typedef struct gfx_vertex_buffer_t {
     uint32_t id;
-    gfx_buffer_type_t type;
     gfx_buffer_usage_t usage;
     size_t size;
     int usages; /* to test for GFX_BUFFER_USAGE_ONE_TIME ? */
-} gfx_buffer_t;
+} gfx_vertex_buffer_t;
+typedef struct gfx_index_buffer_t {
+    uint32_t id;
+    gfx_buffer_usage_t usage;
+    size_t size;
+    int usages; /* to test for GFX_BUFFER_USAGE_ONE_TIME ? */
+} gfx_index_buffer_t;
 
 /* icon is optional and can be left NULL */
 gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window_icon_t* icon);
@@ -479,11 +479,15 @@ gfx_result_t gfx_render(void);
 gfx_result_t gfx_clear(void);
 
 /* data in img is only valid before next call to gfx_screenshot */
-gfx_result_t gfx_screenshot(gfx_image_t* img);
+gfx_result_t gfx_screenshot(gfx_image_data_rgba_t* img);
 
 
-gfx_result_t gfx_buffer_create(gfx_buffer_t* buffer, size_t size, void* ptr);
-gfx_result_t gfx_buffer_rewrite(gfx_buffer_t buffer, size_t offset, size_t size, void* ptr);
-gfx_result_t gfx_buffer_destroy(gfx_buffer_t buffer);
+gfx_result_t gfx_vertex_buffer_create(gfx_buffer_usage_t usage, size_t size, void* ptr, gfx_vertex_buffer_t* buffer);
+gfx_result_t gfx_vertex_buffer_rewrite(gfx_vertex_buffer_t buffer, size_t offset, size_t size, void* ptr);
+gfx_result_t gfx_vertex_buffer_destroy(gfx_vertex_buffer_t buffer);
+
+gfx_result_t gfx_index_buffer_create(gfx_buffer_usage_t usage, size_t size, void* ptr, gfx_index_buffer_t* buffer);
+gfx_result_t gfx_index_buffer_rewrite(gfx_index_buffer_t buffer, size_t offset, size_t size, void* ptr);
+gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer);
 
 #endif
