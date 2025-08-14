@@ -553,6 +553,7 @@ struct g_gl {
     PFNGLFLUSHPROC                      Flush;
     PFNGLFRONTFACEPROC                  FrontFace;
     PFNGLGENBUFFERSPROC                 GenBuffers;
+    PFNGLGENERATEMIPMAPPROC             GenerateMipmap;
     PFNGLGENTEXTURESPROC                GenTextures;
     PFNGLGETACTIVEATTRIBPROC            GetActiveAttrib;
     PFNGLGETACTIVEUNIFORMPROC           GetActiveUniform;
@@ -681,6 +682,7 @@ void load_gl(void) {
     g_gl.Flush                          = (PFNGLFLUSHPROC                     ) glfwGetProcAddress("glFlush");
     g_gl.FrontFace                      = (PFNGLFRONTFACEPROC                 ) glfwGetProcAddress("glFrontFace");
     g_gl.GenBuffers                     = (PFNGLGENBUFFERSPROC                ) glfwGetProcAddress("glGenBuffers");
+    g_gl.GenerateMipmap                 = (PFNGLGENERATEMIPMAPPROC            ) glfwGetProcAddress("glGenerateMipmap");
     g_gl.GenTextures                    = (PFNGLGENTEXTURESPROC               ) glfwGetProcAddress("glGenTextures");
     g_gl.GetActiveAttrib                = (PFNGLGETACTIVEATTRIBPROC           ) glfwGetProcAddress("glGetActiveAttrib");
     g_gl.GetActiveUniform               = (PFNGLGETACTIVEUNIFORMPROC          ) glfwGetProcAddress("glGetActiveUniform");
@@ -3719,13 +3721,24 @@ gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_confi
 
 
     /* GL 2.1 mipmap generation hint: */
-
+    if(g_gl.version = GL2) {
+        g_gl.TexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+    }
 
     r = gfx_texture_image_safe(GL_TEXTURE_2D, data);
     if(r != GFX_OK) { return r; }
 
 
     /* GL 3+ and GL ES 2 mipmap generation: */
+    if(g_gl.version == GLES2 || g_gl.version == GL3Core) {
+        g_gl.GenerateMipmap(GL_TEXTURE_2D);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+    }
 
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
     if(r != GFX_OK) { return r; }

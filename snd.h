@@ -3,6 +3,11 @@
  * implemented in OpenAL 1.1
  */
 
+typedef struct float32_vec3_t {
+    float32_t x, y, z;
+} float32_vec3_t;
+
+typedef uint32_t snd_source_t;
 typedef uint32_t snd_buffer_t;
 
 typedef enum snd_result_t {
@@ -29,8 +34,22 @@ typedef struct snd_mic_info_t {
 typedef struct snd_speaker_info_t {
 
 } snd_speaker_info_t;
+typedef struct snd_source_state_t {
+    float32_vec3_t position, direction, velocity;
+    bool32_t position_relative_to_listener, loop_queued_buffers;
+    struct {
+        float32_t multiplier, min, max, outer_angle_multiplier;
+    } gain;
+    struct {
+        float32_t reference, max, rolloff_factor;
+    } distance;
+    struct {
+        float32_t inner_angle, outer_angle;
+    } cone;
+    float32_t pitch_multiplier;
+} snd_source_state_t;
 
-snd_result_t snd_init(void);
+snd_result_t snd_init(bool32_t start_default_device);
 snd_result_t snd_exit(void);
 
 snd_result_t snd_mic_infos(int *nr_mics, const snd_mic_info_t **infos);

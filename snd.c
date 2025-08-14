@@ -15,9 +15,16 @@
 #include <dlfcn.h>
 #endif /* _WIN32 */
 
+#define SND_INITIAL_ARRAY_CAP 1024
+
 
 struct g_al {
-    void*                           module;
+    void*                            module;
+    size_t                           nr_sources;
+    size_t                           cap_sources;
+    bool*                            source_used;
+    ALuint*                          source_ids;
+    snd_source_state_t               source_states;
     struct {
         LPALCCREATECONTEXT               CreateContext;
         LPALCMAKECONTEXTCURRENT          MakeContextCurrent;
@@ -176,6 +183,11 @@ snd_result_t snd_init(void) {
         return SND_ERROR_AL_NOT_PRESENT;
     }
     snd_load_al(loader);
+    g_al.nr_sources = 0;
+    g_al.cap_sources = SND_INITIAL_ARRAY_CAP;
+    g_al.source_ids = calloc(SND_INITIAL_ARRAY_CAP, sizeof(ALuint));
+    g_al.source_states = calloc(SND_INITIAL_ARRAY_CAP, sizeof(snd_source_state_t));
+    g_al.source_used = calloc(SND_INITIAL_ARRAY_CAP, sizeof(bool));
     return SND_OK;
 }
 snd_result_t snd_exit(void) {
@@ -293,27 +305,9 @@ snd_result_t snd_buffer_free(snd_buffer_t buffer) {
     return SND_OK;
 }
 
-typedef struct float32_vec3_t {
-    float32_t x, y, z;
-} float32_vec3_t;
-typedef uint32_t snd_source_t;
-typedef struct snd_source_state_t {
-    float32_vec3_t position, direction, velocity;
-    bool32_t position_relative_to_listener, loop_queued_buffers;
-    struct {
-        float32_t multiplier, min, max, outer_angle_multiplier;
-    } gain;
-    struct {
-        float32_t reference, max, rolloff_factor;
-    } distance;
-    struct {
-        float32_t inner_angle, outer_angle;
-    } cone;
-    float32_t pitch_multiplier;
-} snd_source_state_t;
 /* context check? or adding in context mark in snd_source_t ? */
 snd_result_t snd_source_create(snd_source_state_t state, snd_source_t* source) {
-    snd_source_t id;
+    ALuint id;
 
     if(source == NULL) {
         return SND_ERROR_INVALID_PARAM;
@@ -332,182 +326,93 @@ snd_result_t snd_source_create(snd_source_state_t state, snd_source_t* source) {
         return SND_ERROR_UNKNOWN;
     }
 
-    source[0] = id;
+    snd_source_t new_id = -1;
+    if(g_al.nr_sources == g_al.cap_sources) {
+        g_al.cap_sources *= 2;
+        g_al.source_used = recalloc(g_al.source_used, g_al.cap_sources*sizeof(bool));
+        g_al.source_ids = recalloc(g_al.source_used, g_al.cap_sources*sizeof(ALuint));
+        g_al.source_states = recalloc(g_al.source_used, g_al.cap_sources*sizeof(snd_source_state_t));
+        new_id = g_al.nr_sources;
+        g_al.nr_sources++;
+    } else {
+        for(int i = 0; i < g_al.nr_sources; i++) {
+            if(!g_al.source_used[i]) {
+                new_id = i;
+                goto after_loop_else;
+            }
+        }
+
+        if(new_id == -1) {
+            new_id = g_al.nr_sources;
+        }
+    }
+
+    assert(g_al.source_used[new_id] == false);
+    g_al.source_used[new_id] = true;
+    g_al.source_ids[new_id] = id;
+    snd_result_t r = snd_source_state_get(new_id, NULL);
+    if(r != SND_OK) {  return r; }
+
+    source[0] = new_id;
     return SND_OK;
 }
-snd_result_t snd_source_state_set(snd_source_t source, snd_source_state_t state) {
-    float32_vec3_t fv;
-    float32_t f;
+
+snd_result_t snd_source_state_get(snd_source_t source, const snd_source_state_t** source_state) {
+    snd_source_state_t* state = &g_al.source_states[source];
     int32_t i;
 
-    if(g_al.IsSource(source) != AL_TRUE) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(float32_is_nan(state.position.x) || float32_is_nan(state.position.y) || float32_is_nan(state.position.z)) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(float32_is_nan(state.direction.x) || float32_is_nan(state.direction.y) || float32_is_nan(state.direction.z)) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(float32_is_nan(state.velocity.x) || float32_is_nan(state.velocity.y) || float32_is_nan(state.velocity.z)) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.gain.multiplier < 0.0f || state.pitch_multiplier <= 0.0f) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.gain.min < 0.0f || state.gain.min > 1.0f) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.gain.max < 0.0f || state.gain.max > 1.0f) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.gain.outer_angle_multiplier < 0.0f || state.gain.outer_angle_multiplier > 1.0f) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.distance.reference < 0.0f || state.distance.max < 0.0f
-            || state.distance.rolloff_factor < 0.0f) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.cone.inner_angle < 0.0f || state.cone.inner_angle > 360.0f) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.cone.outer_angle < 0.0f || state.cone.outer_angle > 360.0f) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.position_relative_to_listener != true && state.position_relative_to_listener != false) {
-        return SND_ERROR_INVALID_PARAM;
-    }
-    if(state.loop_queued_buffers != true && state.loop_queued_buffers != false) {
-        return SND_ERROR_INVALID_PARAM;
-    }
 
-
-
-    g_al.Sourcefv(source, AL_POSITION, &state.position);
+    g_al.GetSourcefv(source, AL_POSITION, &state[0].position);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcefv(source, AL_DIRECTION, &state.direction);
+    g_al.GetSourcefv(source, AL_DIRECTION, &state[0].direction);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcefv(source, AL_VELOCITY, &state.velocity);
+    g_al.GetSourcefv(source, AL_VELOCITY, &state[0].velocity);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
 
-    g_al.Sourcef(source, AL_PITCH, state.pitch_multiplier);
+    g_al.GetSourcef(source, AL_PITCH, &state[0].pitch_multiplier);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_GAIN, state.gain.multiplier);
+    g_al.GetSourcef(source, AL_GAIN, &state[0].gain.multiplier);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_MIN_GAIN, state.gain.min);
+    g_al.GetSourcef(source, AL_MIN_GAIN, &state[0].gain.min);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_MAX_GAIN, state.gain.max);
+    g_al.GetSourcef(source, AL_MAX_GAIN,  &state[0].gain.max);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_CONE_OUTER_GAIN, state.gain.outer_angle_multiplier);
+    g_al.GetSourcef(source, AL_CONE_OUTER_GAIN, &state[0].gain.outer_angle_multiplier);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_REFERENCE_DISTANCE, state.distance.reference);
+    g_al.GetSourcef(source, AL_REFERENCE_DISTANCE, &state[0].distance.reference);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_MAX_DISTANCE, state.distance.max);
+    g_al.GetSourcef(source, AL_MAX_DISTANCE, &state[0].distance.max);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_ROLLOFF_FACTOR, state.distance.rolloff_factor);
+    g_al.GetSourcef(source, AL_ROLLOFF_FACTOR, &state[0].distance.rolloff_factor);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_CONE_INNER_ANGLE, state.cone.inner_angle);
+    g_al.GetSourcef(source, AL_CONE_INNER_ANGLE, &state[0].cone.inner_angle);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.Sourcef(source, AL_CONE_OUTER_ANGLE, state.cone.outer_angle);
+    g_al.GetSourcef(source, AL_CONE_OUTER_ANGLE, &state[0].cone.outer_angle);
     if(g_al.GetError() != AL_NO_ERROR) {
-        return SND_ERROR_UNKNOWN;
-    }
-
-    if(state.position_relative_to_listener) {
-        g_al.Sourcei(source, AL_SOURCE_RELATIVE, AL_TRUE);
-    } else {
-        g_al.Sourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
-    }
-    if(g_al.GetError() != AL_NO_ERROR) {
-        return SND_ERROR_UNKNOWN;
-    }
-    if(state.loop_queued_buffers) {
-        g_al.Sourcei(source, AL_LOOPING, AL_TRUE);
-    } else {
-        g_al.Sourcei(source, AL_LOOPING, AL_FALSE);
-    }
-    if(g_al.GetError() != AL_NO_ERROR) {
-        return SND_ERROR_UNKNOWN;
-    }
-
-
-
-
-    g_al.GetSourcefv(source, AL_POSITION, &fv);
-    if(g_al.GetError() != AL_NO_ERROR || fv != state.position) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcefv(source, AL_DIRECTION, &fv);
-    if(g_al.GetError() != AL_NO_ERROR || fv != state.direction) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcefv(source, AL_VELOCITY, &fv);
-    if(g_al.GetError() != AL_NO_ERROR || fv != state.velocity) {
-        return SND_ERROR_UNKNOWN;
-    }
-
-    g_al.GetSourcef(source, AL_PITCH, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.pitch_multiplier) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_GAIN, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.gain.multiplier) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_MIN_GAIN, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.gain.min) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_MAX_GAIN, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.gain.max) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_CONE_OUTER_GAIN, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.gain.outer_angle_multiplier) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_REFERENCE_DISTANCE, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.distance.reference) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_MAX_DISTANCE, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.distance.max) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_ROLLOFF_FACTOR, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.distance.rolloff_factor) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_CONE_INNER_ANGLE, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.cone.inner_angle) {
-        return SND_ERROR_UNKNOWN;
-    }
-    g_al.GetSourcef(source, AL_CONE_OUTER_ANGLE, &f);
-    if(g_al.GetError() != AL_NO_ERROR || f != state.cone.outer_angle) {
         return SND_ERROR_UNKNOWN;
     }
 
@@ -518,14 +423,10 @@ snd_result_t snd_source_state_set(snd_source_t source, snd_source_state_t state)
     }
     switch(i) {
     case AL_TRUE:
-        if(!state.position_relative_to_listener) {
-            return SND_ERROR_UNKNOWN;
-        }
+        state.position_relative_to_listener = true;
         break;
     case AL_FALSE:
-        if(state.position_relative_to_listener) {
-            return SND_ERROR_UNKNOWN;
-        }
+        state.position_relative_to_listener = false;
         break;
     default:
             return SND_ERROR_UNKNOWN;
@@ -536,44 +437,169 @@ snd_result_t snd_source_state_set(snd_source_t source, snd_source_state_t state)
     }
     switch(i) {
     case AL_TRUE:
-        if(!state.loop_queued_buffers) {
-            return SND_ERROR_UNKNOWN;
-        }
+        state.loop_queued_buffers = true;
         break;
     case AL_FALSE:
-        if(state.loop_queued_buffers) {
-            return SND_ERROR_UNKNOWN;
-        }
+        state.loop_queued_buffers = false;
         break;
     default:
             return SND_ERROR_UNKNOWN;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-    alSourcei
-
-
-AL_BUFFER
-AL_SOURCE_STATE
-
-
-
-
-
+    if(source_state != NULL) {
+        source_state[0] = state;
+    }
 
     return SND_OK;
 }
+
+snd_result_t snd_source_state_set(snd_source_t source, snd_source_state_t state) {
+    float32_vec3_t fv;
+    float32_t f;
+    int32_t i;
+
+    ALuint id = g_al.source_ids[source];
+
+    if(g_al.IsSource(id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+
+
+    if(float32_is_nan(state.position.x) || float32_is_nan(state.position.y) || float32_is_nan(state.position.z)) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcefv(source, AL_POSITION, &state.position);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(float32_is_nan(state.direction.x) || float32_is_nan(state.direction.y) || float32_is_nan(state.direction.z)) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcefv(source, AL_DIRECTION, &state.direction);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(float32_is_nan(state.velocity.x) || float32_is_nan(state.velocity.y) || float32_is_nan(state.velocity.z)) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcefv(source, AL_VELOCITY, &state.velocity);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+
+    if(state.pitch_multiplier <= 0.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_PITCH, state.pitch_multiplier);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.gain.multiplier < 0.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_GAIN, state.gain.multiplier);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.gain.min < 0.0f || state.gain.min > 1.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_MIN_GAIN, state.gain.min);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.gain.max < 0.0f || state.gain.max > 1.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_MAX_GAIN, state.gain.max);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+
+    if(state.gain.outer_angle_multiplier < 0.0f || state.gain.outer_angle_multiplier > 1.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_CONE_OUTER_GAIN, state.gain.outer_angle_multiplier);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.distance.reference < 0.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_REFERENCE_DISTANCE, state.distance.reference);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.distance.max < 0.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_MAX_DISTANCE, state.distance.max);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.distance.rolloff_factor < 0.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_ROLLOFF_FACTOR, state.distance.rolloff_factor);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.cone.inner_angle < 0.0f || state.cone.inner_angle > 360.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_CONE_INNER_ANGLE, state.cone.inner_angle);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.cone.outer_angle < 0.0f || state.cone.outer_angle > 360.0f) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.Sourcef(source, AL_CONE_OUTER_ANGLE, state.cone.outer_angle);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.position_relative_to_listener != true && state.position_relative_to_listener != false) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    if(state.position_relative_to_listener) {
+        g_al.Sourcei(source, AL_SOURCE_RELATIVE, AL_TRUE);
+    } else {
+        g_al.Sourcei(source, AL_SOURCE_RELATIVE, AL_FALSE);
+    }
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    if(state.loop_queued_buffers != true && state.loop_queued_buffers != false) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    if(state.loop_queued_buffers) {
+        g_al.Sourcei(source, AL_LOOPING, AL_TRUE);
+    } else {
+        g_al.Sourcei(source, AL_LOOPING, AL_FALSE);
+    }
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    return SND_OK;
+}
+
+
+
 snd_result_t snd_source_destroy(snd_source_t source) {
     if(g_al.IsSource(source) != AL_TRUE) {
         return SND_ERROR_INVALID_PARAM;
@@ -589,3 +615,14 @@ snd_result_t snd_source_destroy(snd_source_t source) {
 
     return SND_OK;
 }
+
+
+
+
+
+    alSourcei
+
+
+AL_BUFFER
+AL_SOURCE_STATE
+

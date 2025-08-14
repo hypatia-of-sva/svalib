@@ -9,6 +9,21 @@
 
 
 
+/* library maintenance: */
+
+typedef struct lib_init_params_t {
+
+} lib_init_params_t;
+
+    /* should overtake gfx_init, snd_init etc, and also fs/io, threading, cam, socket etc things.
+     this should also overtake libc init, and give back cmdline args etc. */
+void lib_init(lib_init_params_t params);
+void lib_cleanup(void);
+
+
+
+
+
 /* fundamental things */
 
 #define NULL ((void*)0)
@@ -62,12 +77,12 @@ typedef uint64_t size_t, uintptr_t;
 #endif
 
 
-typedef enum float_exceptions_flagbit_t {
+typedef enum int_exceptions_flagbit_t {
     INT_EXCEPTIONS_DIVIDE_BY_ZERO_BIT = 0x01,
     INT_EXCEPTIONS_OVERFLOW_BIT = 0x02,
     INT_EXCEPTIONS_UNDERFLOW_BIT = 0x04,
     INT_EXCEPTIONS_LAST = INT_EXCEPTIONS_UNDERFLOW_BIT
-} float_exceptions_flagbit_t;
+} int_exceptions_flagbit_t;
 #define INT_EXCEPTIONS_ALL 0x07
 typedef uint8_t int_exceptions_mask_t
 int_exceptions_mask_t int_exceptions_get(void);
@@ -80,13 +95,6 @@ void int_exceptions_clear(void);
 intmax ?
 (u)intN_t, (u)int_leastN_t
 
-
-typedef struct intmax_div_t {
-    intmax_t quotient, remainder;
-} intmax_div_t;
-
-intmax_t intmax_abs(intmax_t j);
-intmax_div_t intmax_div(intmax_t numer, intmax_t denom);
 
 
 
@@ -103,107 +111,53 @@ int_endianness_t int_native_endianness(void);
 
 
 
-uint32_t uint8_leading_zeros(uint8_t value);
-uint32_t uint16_leading_zeros(uint16_t value);
-uint32_t uint32_leading_zeros(uint32_t value);
-uint32_t uint64_leading_zeros(uint64_t value);
-uint32_t uint8_leading_ones(uint8_t value);
-uint32_t uint16_leading_ones(uint16_t value);
-uint32_t uint32_leading_ones(uint32_t value);
-uint32_t uint64_leading_ones(uint64_t value);
-uint32_t uint8_trailing_zeros(uint8_t value);
-uint32_t uint16_trailing_zeros(uint16_t value);
-uint32_t uint32_trailing_zeros(uint32_t value);
-uint32_t uint64_trailing_zeros(uint64_t value);
-uint32_t uint8_trailing_ones(uint8_t value);
-uint32_t uint16_trailing_ones(uint16_t value);
-uint32_t uint32_trailing_ones(uint32_t value);
-uint32_t uint64_trailing_ones(uint64_t value);
-uint32_t uint8_first_leading_zero(uint8_t value);
-uint32_t uint16_first_leading_zero(uint16_t value);
-uint32_t uint32_first_leading_zero(uint32_t value);
-uint32_t uint64_first_leading_zero(uint64_t value);
-uint32_t uint8_first_leading_one(uint8_t value);
-uint32_t uint16_first_leading_one(uint16_t value);
-uint32_t uint32_first_leading_one(uint32_t value);
-uint32_t uint64_first_leading_one(uint64_t value);
-uint32_t uint8_first_trailing_zero(uint8_t value);
-uint32_t uint16_first_trailing_zero(uint16_t value);
-uint32_t uint32_first_trailing_zero(uint32_t value);
-uint32_t uint64_first_trailing_zero(uint64_t value);
-uint32_t uint8_first_trailing_one(uint8_t value);
-uint32_t uint16_first_trailing_one(uint16_t value);
-uint32_t uint32_first_trailing_one(uint32_t value);
-uint32_t uint64_first_trailing_one(uint64_t value);
-uint32_t uint8_count_zeros(uint8_t value);
-uint32_t uint16_count_zeros(uint16_t value);
-uint32_t uint32_count_zeros(uint32_t value);
-uint32_t uint64_count_zeros(uint64_t value);
-uint32_t uint8_count_ones(uint8_t value);
-uint32_t uint16_count_ones(uint16_t value);
-uint32_t uint32_count_ones(uint32_t value);
-uint32_t uint64_count_ones(uint64_t value);
-bool32_t uint8_has_single_bit(uint8_t value);
-bool32_t uint16_has_single_bit(uint16_t value);
-bool32_t uint32_has_single_bit(uint32_t value);
-bool32_t uint64_has_single_bit(uint64_t value);
-uint32_t uint8_bit_width(uint8_t value);
-uint32_t uint16_bit_width(uint16_t value);
-uint32_t uint32_bit_width(uint32_t value);
-uint32_t uint64_bit_width(uint64_t value);
-uint32_t uint8_bit_floor(uint8_t value);
-uint32_t uint16_bit_floor(uint16_t value);
-uint32_t uint32_bit_floor(uint32_t value);
-uint32_t uint64_bit_floor(uint64_t value);
-uint32_t uint8_bit_ceil(uint8_t value);
-uint32_t uint16_bit_ceil(uint16_t value);
-uint32_t uint32_bit_ceil(uint32_t value);
-uint32_t uint64_bit_ceil(uint64_t value);
 
 
 
 
 
+<?c
+const char* int_types[] = {"int8", "int16", "int32", "int64", "int128", "intmax",
+                            "uint8", "uint16", "uint32", "uint64", "uint128", "uintmax"};
+const char* bitops[] = {
+    "leading_zeros", "leading_ones", "trailing_zeros", "trailing_ones",
+    "first_leading_zero", "first_leading_one", "first_trailing_zero", "first_trailing_one",
+    "count_zeros", "count_ones", "bit_width", "bit_floor", "bit_ceil",
+}
+
+for(int i = 0; i < sizeof(int_types)/sizeof(char*); i++) {
+    char* t1 = int_types[i];
+?>
+typedef struct @t1@_div_t {
+    @t1@_t quotient, remainder;
+} @t1@_div_t;
+@t1@_t @t1@_abs(@t1@_t value);
+@t1@_div_t @t1@_div(@t1@_t numer, @t1@_t denom);
+bool32_t @t1@_has_single_bit(@t1@_t value);
+<?c
+    for(int j = 0; j < sizeof(bitops)/sizeof(char*); j++) {
+        char* F = bitops[j];
+?>
+uint32_t @t1@_@F@(@t1@_t value);
+<?c
+    }
 /** checked arithmetic: */
-/* these functions only take 128 bit operands, since all other types can be implicitly converted without loss of any precision. */
-bool int8_checked_conversion(int8_t* result, intmax_t a);
-bool int16_checked_conversion(int16_t* result, intmax_t a);
-bool int32_checked_conversion(int32_t* result, intmax_t a);
-bool int64_checked_conversion(int64_t* result, intmax_t a);
-bool uint8_checked_conversion(uint8_t* result, intmax_t a);
-bool uint16_checked_conversion(uint16_t* result, intmax_t a);
-bool uint32_checked_conversion(uint32_t* result, intmax_t a);
-bool uint64_checked_conversion(uint64_t* result, intmax_t a);
-
-bool int8_checked_addition(int8_t* result, intmax_t a, intmax_t b);
-bool int16_checked_addition(int16_t* result, intmax_t a, intmax_t b);
-bool int32_checked_addition(int32_t* result, intmax_t a, intmax_t b);
-bool int64_checked_addition(int64_t* result, intmax_t a, intmax_t b);
-bool uint8_checked_addition(uint8_t* result, intmax_t a, intmax_t b);
-bool uint16_checked_addition(uint16_t* result, intmax_t a, intmax_t b);
-bool uint32_checked_addition(uint32_t* result, intmax_t a, intmax_t b);
-bool uint64_checked_addition(uint64_t* result, intmax_t a, intmax_t b);
-
-bool int8_checked_subtraction(int8_t* result, intmax_t a, intmax_t b);
-bool int16_checked_subtraction(int16_t* result, intmax_t a, intmax_t b);
-bool int32_checked_subtraction(int32_t* result, intmax_t a, intmax_t b);
-bool int64_checked_subtraction(int64_t* result, intmax_t a, intmax_t b);
-bool uint8_checked_subtraction(uint8_t* result, intmax_t a, intmax_t b);
-bool uint16_checked_subtraction(uint16_t* result, intmax_t a, intmax_t b);
-bool uint32_checked_subtraction(uint32_t* result, intmax_t a, intmax_t b);
-bool uint64_checked_subtraction(uint64_t* result, intmax_t a, intmax_t b);
-
-bool int8_checked_multiplication(int8_t* result, intmax_t a, intmax_t b);
-bool int16_checked_multiplication(int16_t* result, intmax_t a, intmax_t b);
-bool int32_checked_multiplication(int32_t* result, intmax_t a, intmax_t b);
-bool int64_checked_multiplication(int64_t* result, intmax_t a, intmax_t b);
-bool uint8_checked_multiplication(uint8_t* result, intmax_t a, intmax_t b);
-bool uint16_checked_multiplication(uint16_t* result, intmax_t a, intmax_t b);
-bool uint32_checked_multiplication(uint32_t* result, intmax_t a, intmax_t b);
-bool uint64_checked_multiplication(uint64_t* result, intmax_t a, intmax_t b);
-
-
-
+    for(int j = 0; j < sizeof(int_types)/sizeof(char*); j++) {
+        char* t2 = int_types[j];
+?>
+bool32_t @t1@_checked_conversion_from_@t2@(@t1@_t* result, @t2@_t val);
+<?c
+        for(int k = 0; k < sizeof(int_types)/sizeof(char*); k++) {
+            char* t3 = int_types[k];
+?>
+bool32_t @t1@_checked_addition_of_@t2@_and_@t3@(@t1@_t* result, @t2@_t a, @t3@_t b);
+bool32_t @t1@_checked_subtraction_of_@t2@_and_@t3@(@t1@_t* result, @t2@_t a, @t3@_t b);
+bool32_t @t1@_checked_multiplication_of_@t2@_and_@t3@(@t1@_t* result, @t2@_t a, @t3@_t b);
+<?c
+        }
+    }
+}
+?>
 
 
 
@@ -271,10 +225,11 @@ typedef enum float_pair_ordering_t {
 
 
 float_exceptions_mask_t float_exceptions_get(void);
-void float_exceptions_clear(void);
+bool32_t float_exceptions_clear(void);
 float_rounding_direction_t float_rounding_direction_get(void);
-void float_rounding_direction_set(float_rounding_direction_t m);
+bool32_t float_rounding_direction_set(float_rounding_direction_t m);
 
+bool32_t float_flush_denormals_to_zero(bool32_t flag);
 
 
 /* TODO float.h stuff */
@@ -302,111 +257,59 @@ typedef double float64_t;
 
 
 
-float_number_type_t float32_classify(float32_t x);
-float_number_type_t float64_classify(float64_t x);
-bool32_t float32_is_nan(float32_t x);
-bool32_t float64_is_nan(float64_t x);
 
-bool32_t float32_sign_bit(float32_t x);
-bool32_t float64_sign_bit(float64_t x);
 
-float32_t float32_radians_from_degrees(float32_t x);
-float64_t float64_radians_from_degrees(float64_t x);
-float32_t float32_degrees_from_radians(float32_t x);
-float64_t float64_degrees_from_radians(float64_t x);
-float32_t float32_sign(float32_t x);
-float64_t float64_sign(float64_t x);
-float32_t float32_acos(float32_t x);
-float64_t float64_acos(float64_t x);
-float32_t float32_asin(float32_t x);
-float64_t float64_asin(float64_t x);
-float32_t float32_atan(float32_t x);
-float64_t float64_atan(float64_t x);
-float32_t float32_cos(float32_t x);
-float64_t float64_cos(float64_t x);
-float32_t float32_sin(float32_t x);
-float64_t float64_sin(float64_t x);
-float32_t float32_tan(float32_t x);
-float64_t float64_tan(float64_t x);
-float32_t float32_acospi(float32_t x);
-float64_t float64_acospi(float64_t x);
-float32_t float32_asinpi(float32_t x);
-float64_t float64_asinpi(float64_t x);
-float32_t float32_atanpi(float32_t x);
-float64_t float64_atanpi(float64_t x);
-float32_t float32_cospi(float32_t x);
-float64_t float64_cospi(float64_t x);
-float32_t float32_sinpi(float32_t x);
-float64_t float64_sinpi(float64_t x);
-float32_t float32_tanpi(float32_t x);
-float64_t float64_tanpi(float64_t x);
-float32_t float32_acosh(float32_t x);
-float64_t float64_acosh(float64_t x);
-float32_t float32_asinh(float32_t x);
-float64_t float64_asinh(float64_t x);
-float32_t float32_atanh(float32_t x);
-float64_t float64_atanh(float64_t x);
-float32_t float32_cosh(float32_t x);
-float64_t float64_cosh(float64_t x);
-float32_t float32_sinh(float32_t x);
-float64_t float64_sinh(float64_t x);
-float32_t float32_tanh(float32_t x);
-float64_t float64_tanh(float64_t x);
-float32_t float32_exp(float32_t x);
-float64_t float64_exp(float64_t x);
-float32_t float32_exp2(float32_t x);
-float64_t float64_exp2(float64_t x);
-float32_t float32_exp10(float32_t x);
-float64_t float64_exp10(float64_t x);
-float32_t float32_expm1(float32_t x);
-float64_t float64_expm1(float64_t x);
-float32_t float32_exp2m1(float32_t x);
-float64_t float64_exp2m1(float64_t x);
-float32_t float32_exp10m1(float32_t x);
-float64_t float64_exp10m1(float64_t x);
-float32_t float32_log(float32_t x);
-float64_t float64_log(float64_t x);
-float32_t float32_log2(float32_t x);
-float64_t float64_log2(float64_t x);
-float32_t float32_log10(float32_t x);
-float64_t float64_log10(float64_t x);
-float32_t float32_logp1(float32_t x);
-float64_t float64_logp1(float64_t x);
-float32_t float32_log2p1(float32_t x);
-float64_t float64_log2p1(float64_t x);
-float32_t float32_log10p1(float32_t x);
-float64_t float64_log10p1(float64_t x);
-float32_t float32_cbrt(float32_t x);
-float64_t float64_cbrt(float64_t x);
-float32_t float32_abs(float32_t x);
-float64_t float64_abs(float64_t x);
-float32_t float32_rsqrt(float32_t x);
-float64_t float64_rsqrt(float64_t x);
-float32_t float32_sqrt(float32_t x);
-float64_t float64_sqrt(float64_t x);
-float32_t float32_erf(float32_t x);
-float64_t float64_erf(float64_t x);
-float32_t float32_erfc(float32_t x);
-float64_t float64_erfc(float64_t x);
-float32_t float32_lgamma(float32_t x);
-float64_t float64_lgamma(float64_t x);
-float32_t float32_tgamma(float32_t x);
-float64_t float64_tgamma(float64_t x);
+<?c
+const char* float_types[] = {"float16", "float32", "float64", "float80", "float128",
+                             "decimal32", "decimal64", "decimal128"};
+const char* unary_functions[] = {
+    "acos", "asin", "atan", "cos", "sin", "tan",
+    "acospi", "asinpi", "atanpi", "cospi", "sinpi", "tanpi",
+    "acosh", "asinh", "atanh", "cosh", "sinh", "tanh",
+    "exp", "exp2", "exp10", "expm1", "exp2m1", "exp10m1",
+    "log", "log2". "log10", "logp1", "log2p1", "log10p1",
+    "sign", "abs", "sqrt", "rsqrt", "cbrt", "erf", "erfc", "lgamma", "tgamma",
+    "radians_from_degrees", "degrees_from_radians",
+}
+const char* binary_functions[] = {
+    "atan2", "atan2pi", "hypot", "pow", "powr", "fdim", "step",
+}
+const char* trinary_functions[] = {
+    "fma", "clamp", "lerp", "smoothstep"
+}
 
-float32_t float32_atan2(float32_t y, float32_t x);
-float64_t float64_atan2(float64_t y, float64_t x);
-float32_t float32_atan2pi(float32_t y, float32_t x);
-float64_t float64_atan2pi(float64_t y, float64_t x);
-float32_t float32_hypot(float32_t x, float32_t y);
-float64_t float64_hypot(float64_t x, float64_t y);
-float32_t float32_pow(float32_t x, float32_t y);
-float64_t float64_pow(float64_t x, float64_t y);
-float32_t float32_powr(float32_t y, float32_t x);
-float64_t float64_powr(float64_t y, float64_t x);
-float32_t  float32_fdim(float32_t x, float32_t y);
-float64_t  float64_fdim(float64_t x, float64_t y);
-float32_t  float32_fma(float32_t x, float32_t y, float32_t z);
-float64_t  float64_fma(float64_t x, float64_t y, float64_t z);
+for(int i = 0; i < sizeof(float_types)/sizeof(char*); i++) {
+    char* T = float_types[i];
+?>
+float_number_type_t @T@_classify(@T@_t x);
+bool32_t @T@_is_nan(@T@_t x);
+bool32_t @T@_sign_bit(@T@_t x);
+<?c
+    for(int k = 0; k < sizeof(unary_functions)/sizeof(char*); k++) {
+        char* F = unary_functions[k];
+?>
+@T@_t @T@_@F@(@T@_t x);
+<?c
+    }
+    for(int k = 0; k < sizeof(binary_functions)/sizeof(char*); k++) {
+        char* F = binary_functions[k];
+?>
+@T@_t @T@_@F@(@T@_t x, @T@_t y);
+<?c
+    }
+    for(int k = 0; k < sizeof(trinary_functions)/sizeof(char*); k++) {
+        char* F = trinary_functions[k];
+?>
+@T@_t @T@_@F@(@T@_t x, @T@_t y, @T@_t z);
+<?c
+    }
+}
+?>
+
+
+
+
+
 
 float32_t float32_multiply_with_i32pow2(float32_t x, int32_t p);
 float64_t float64_multiply_with_i32pow2(float64_t x, int32_t p);
@@ -469,6 +372,9 @@ float32_t  float32_mod(float32_t x, float32_t y);
 float64_t  float64_mod(float64_t x, float64_t y);
 float32_t  float32_IEE_remainder(float32_t x, float32_t y);
 float64_t  float64_IEE_remainder(float64_t x, float64_t y);
+
+
+/* this is the only not allowed for decimal floating point */
 float32_t  float32_IEE_remainder_and_quotient_i32(float32_t x, float32_t y, int32_t* quo);
 float64_t  float64_IEE_remainder_and_quotient_i32(float64_t x, float64_t y, int32_t* quo);
 
@@ -557,6 +463,70 @@ bool32_t float64_nansignalling_is_equal_to_float64(float64_t x, float64_t y);
 
 
 
+
+
+
+
+
+/* array functions: */
+void int8_sort_inplace(int8_t* array, size_t len);
+void int16_sort_inplace(int16_t* array, size_t len);
+void int32_sort_inplace(int32_t* array, size_t len);
+void int64_sort_inplace(int64_t* array, size_t len);
+void uint8_sort_inplace(uint8_t* array, size_t len);
+void uint16_sort_inplace(uint16_t* array, size_t len);
+void uint32_sort_inplace(uint32_t* array, size_t len);
+void uint64_sort_inplace(uint64_t* array, size_t len);
+/* float ordering: with 1 for a > b, 0 for a == b, -1 for a < b:
+int comp(float a, float b) {
+    if((bits(a) == bits(b))) {
+        return 0;
+    }
+    if(signbit(a) == 0 && signbit(b) == 1) {
+        return 1;
+    }
+    if(signbit(a) == 1 && signbit(b) == 0) {
+        return -1;
+    }
+    if(exponentbits(a) != exponentbits(b)) {
+        return int_comp(exponentbits(a), exponentbits(b));
+    }
+    return int_comp(mantissabits(a), mantissabits(b));
+}
+this can be easily understood to be the same as the signed integer comparison.
+I.e., float32_sort_inplace is works like an int32 in sign-magnitude representation.
+By this construction, NaNs are sorted between the finite values and the infinities.
+*/
+void float32_sort_inplace(float32_t* array, size_t len);
+void float64_sort_inplace(float64_t* array, size_t len);
+
+the same also for complex, quaternion, fraction types
+
+
+void int8_partition_inplace(int8_t* array, size_t len, int8_t pivot, size_t* partition_index);
+void int16_partition_inplace(int16_t* array, size_t len, int16_t pivot, size_t* partition_index);
+void int32_partition_inplace(int32_t* array, size_t len, int32_t pivot, size_t* partition_index);
+void int64_partition_inplace(int64_t* array, size_t len, int64_t pivot, size_t* partition_index);
+void uint8_partition_inplace(uint8_t* array, size_t len, uint8_t pivot, size_t* partition_index);
+void uint16_partition_inplace(uint16_t* array, size_t len, uint16_t pivot, size_t* partition_index);
+void uint32_partition_inplace(uint32_t* array, size_t len, uint32_t pivot, size_t* partition_index);
+void uint64_partition_inplace(uint64_t* array, size_t len, uint64_t pivot, size_t* partition_index);
+
+
+
+find
+search (requires being sorted)
+min
+max
+min_abs
+max_abs
+euclidean_norm
+scale / scalar_mul
+shift / scalar_add
+    or these both together?
+pointwise add, mul, sub, div etc.
+normalize_to_max_abs_value
+normalize_to_euclidean_value
 
 
 
