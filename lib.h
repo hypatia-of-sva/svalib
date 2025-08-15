@@ -259,6 +259,10 @@ typedef double float64_t;
 
 
 
+
+
+
+
 <?c
 const char* float_types[] = {"float16", "float32", "float64", "float80", "float128",
                              "decimal32", "decimal64", "decimal128"};
@@ -270,9 +274,14 @@ const char* unary_functions[] = {
     "log", "log2". "log10", "logp1", "log2p1", "log10p1",
     "sign", "abs", "sqrt", "rsqrt", "cbrt", "erf", "erfc", "lgamma", "tgamma",
     "radians_from_degrees", "degrees_from_radians",
+    "ceil", "floor", "fract_from_floor", "trunc",
+    "round_default", "round_default_raise_inexact", "round_with_half_away_from_zero",
+    "round_with_half_to_even", "next_greater", "next_lesser"
 }
 const char* binary_functions[] = {
     "atan2", "atan2pi", "hypot", "pow", "powr", "fdim", "step",
+    "add", "sub", "mul", "div", "mod", "IEEE_remainder", "copysign_over_value", "next_in_direction_of",
+    "max", "min", "max_abs", "min_abs"
 }
 const char* trinary_functions[] = {
     "fma", "clamp", "lerp", "smoothstep"
@@ -303,8 +312,35 @@ bool32_t @T@_sign_bit(@T@_t x);
 @T@_t @T@_@F@(@T@_t x, @T@_t y, @T@_t z);
 <?c
     }
+?>
+/* pre-converted functions */
+<?c
+    for(int j = 0; j < sizeof(float_types)/sizeof(char*); j++) {
+        char* T2 = float_types[j];
+
+        for(int k = 0; k < sizeof(unary_functions)/sizeof(char*); k++) {
+            char* F = unary_functions[k];
+    ?>
+    @T@_t @T@_from_@T2@_@F@(@T2@_t x);
+    <?c
+        }
+        for(int k = 0; k < sizeof(binary_functions)/sizeof(char*); k++) {
+            char* F = binary_functions[k];
+    ?>
+    @T@_t @T@_from_@T2@_@F@(@T2@_t x, @T2@_t y);
+    <?c
+        }
+        for(int k = 0; k < sizeof(trinary_functions)/sizeof(char*); k++) {
+            char* F = trinary_functions[k];
+    ?>
+    @T@_t @T@_from_@T2@_@F@(@T2@_t x, @T2@_t y, @T2@_t z);
+    <?c
+        }
+
+    }
 }
 ?>
+
 
 
 
@@ -333,22 +369,6 @@ int32_t float64_i32log2(float64_t x);
 int64_t float32_i64log2(float32_t x);
 int64_t float64_i64log2(float64_t x);
 
-float32_t float32_ceil(float32_t x);
-float64_t float64_ceil(float64_t x);
-float32_t float32_floor(float32_t x);
-float64_t float64_floor(float64_t x);
-float32_t float32_fract_from_floor(float32_t x);
-float64_t float64_fract_from_floor(float64_t x);
-float32_t float32_trunc(float32_t x);
-float64_t float64_trunc(float64_t x);
-float32_t float32_round_default(float32_t x);
-float64_t float64_round_default(float64_t x);
-float32_t float32_round_default_raise_inexact(float32_t x);
-float64_t float64_round_default_raise_inexact(float64_t x);
-float32_t float32_round_with_half_away_from_zero(float32_t x);
-float64_t float64_round_with_half_away_from_zero(float64_t x);
-float32_t float32_round_with_half_to_even(float32_t x);
-float64_t float64_round_with_half_to_even(float64_t x);
 
 float32_t float32_round_with_direction_and_test_bitwidth(float32_t x, float_rounding_direction_t direction, uint32_t bitwidth);
 float64_t float64_round_with_direction_and_test_bitwidth(float64_t x, float_rounding_direction_t direction, uint32_t bitwidth);
@@ -368,10 +388,6 @@ int32_t float64_i32round_with_half_away_from_zero(float64_t x);
 int64_t float32_i64round_with_half_away_from_zero(float32_t x);
 int64_t float64_i64round_with_half_away_from_zero(float64_t x);
 
-float32_t  float32_mod(float32_t x, float32_t y);
-float64_t  float64_mod(float64_t x, float64_t y);
-float32_t  float32_IEE_remainder(float32_t x, float32_t y);
-float64_t  float64_IEE_remainder(float64_t x, float64_t y);
 
 
 /* this is the only not allowed for decimal floating point */
@@ -379,8 +395,6 @@ float32_t  float32_IEE_remainder_and_quotient_i32(float32_t x, float32_t y, int3
 float64_t  float64_IEE_remainder_and_quotient_i32(float64_t x, float64_t y, int32_t* quo);
 
 
-float32_t  float32_copysign_over_value(float32_t valueparam, float32_t signparam);
-float64_t  float64_copysign_over_value(float64_t valueparam, float64_t signparam);
 
 float32_t  float32_qnan(const char* tagp);
 float64_t  float64_qnan(const char* tagp);
@@ -389,31 +403,7 @@ float32_t  float32_snan(const char* tagp);
 float64_t  float64_snan(const char* tagp);
 
 
-float32_t  float32_next_in_direction_of(float32_t x, float32_t direction);
-float64_t  float64_next_in_direction_of(float64_t x, float64_t direction);
-float32_t  float32_next_greater(float32_t x);
-float64_t  float64_next_greater(float64_t x);
-float32_t  float32_next_lesser(float32_t x);
-float64_t  float64_next_lesser(float64_t x);
 
-
-float32_t  float32_max(float32_t x, float32_t y);
-float64_t  float64_max(float64_t x, float64_t y);
-float32_t  float32_min(float32_t x, float32_t y);
-float64_t  float64_min(float64_t x, float64_t y);
-float32_t  float32_max_abs(float32_t x, float32_t y);
-float64_t  float64_max_abs(float64_t x, float64_t y);
-float32_t  float32_min_abs(float32_t x, float32_t y);
-float64_t  float64_min_abs(float64_t x, float64_t y);
-
-
-
-float32_t  float64_to_f32_add(float64_t x, float64_t y);
-float32_t  float64_to_f32_sub(float64_t x, float64_t y);
-float32_t  float64_to_f32_mul(float64_t x, float64_t y);
-float32_t  float64_to_f32_div(float64_t x, float64_t y);
-float32_t  float64_to_f32_fma(float64_t x, float64_t y);
-float32_t  float64_to_f32_sqrt(float64_t x, float64_t y);
 
 
 
