@@ -286,6 +286,25 @@ const char* binary_functions[] = {
 const char* trinary_functions[] = {
     "fma", "clamp", "lerp", "smoothstep"
 }
+const char* binary_with_int_functions[] = {
+    "x_mul_exp2n", "x_mul_exp10n", "1_plus_x_pown", "pown", "rootn"
+}
+const char* binary_with_ptr_functions[] = {
+    "split_into_binary_mantissa_and_log2", "split_into_decimal_mantissa_and_log10",
+    "split_into_fraction_and_floor", "split_into_fraction_and_ceil", "split_into_fraction_and_round_default",
+    "split_into_fraction_and_round_with_half_away_from_zero", "split_into_fraction_and_round_with_half_to_even",
+}
+const char* compare_funcs[] = {
+    "qnansafe_is_greater_than", "qnansafe_is_greater_than_or_equal_to",
+    "qnansafe_is_less_than", "qnansafe_is_less_than_or_equal_to",
+    "qnansafe_is_less_or_greater_than", "qnansafe_pair_is_unordered",
+    "nansignalling_is_equal_to"
+}
+const char* round_with_direction_funcs[] = {
+    "round_with_direction_and_test_bitwidth", "round_with_direction_and_test_u_bitwidth",
+    "with_direction_and_test_bitwidth_raise_inexact", "with_direction_and_test_u_bitwidth_raise_inexact",
+}
+
 
 for(int i = 0; i < sizeof(float_types)/sizeof(char*); i++) {
     char* T = float_types[i];
@@ -293,6 +312,8 @@ for(int i = 0; i < sizeof(float_types)/sizeof(char*); i++) {
 float_number_type_t @T@_classify(@T@_t x);
 bool32_t @T@_is_nan(@T@_t x);
 bool32_t @T@_sign_bit(@T@_t x);
+@T@_t @T@_make_qnan(const char* tagp);
+@T@_t @T@_make_snan(const char* tagp);
 <?c
     for(int k = 0; k < sizeof(unary_functions)/sizeof(char*); k++) {
         char* F = unary_functions[k];
@@ -312,82 +333,91 @@ bool32_t @T@_sign_bit(@T@_t x);
 @T@_t @T@_@F@(@T@_t x, @T@_t y, @T@_t z);
 <?c
     }
+    for(int k = 0; k < sizeof(binary_with_int_functions)/sizeof(char*); k++) {
+        char* F = binary_with_int_functions[k];
+        for(int j = 0; j < sizeof(int_types)/sizeof(char*); j++) {
+            char* Ti = int_types[j];
 ?>
-/* pre-converted functions */
+@T@_t @T@_@F@_@Ti@(@T@_t x, @Ti@_t n);
 <?c
+        }
+    }
+    for(int k = 0; k < sizeof(binary_with_ptr_functions)/sizeof(char*); k++) {
+        char* F = binary_with_ptr_functions[k];
+        for(int j = 0; j < sizeof(int_types)/sizeof(char*); j++) {
+            char* Ti = int_types[j];
+?>
+@T@_t @T@_@F@_@Ti@(@T@_t x, @Ti@_t* p);
+<?c
+        }
+        for(int j = 0; j < sizeof(float_types)/sizeof(char*); j++) {
+            char* T2 = float_types[j];
+?>
+@T@_t @T@_@F@_@T2@(@T@_t x, @T2@_t* p);
+<?c
+        }
+    }
+    for(int k = 0; k < sizeof(round_with_direction_funcs)/sizeof(char*); k++) {
+        char* F = round_with_direction_funcs[k];
+?>
+@T@_t @T@_@F@(@T@_t x, float_rounding_direction_t direction, uint32_t bitwidth);
+<?c
+    }
+
     for(int j = 0; j < sizeof(float_types)/sizeof(char*); j++) {
         char* T2 = float_types[j];
+?>
+float_pair_ordering_t @T@_qnansafe_compare_to_@T2@(@T@_t x, @T2@_t y);
+<?c
+        for(int k = 0; k < sizeof(compare_funcs)/sizeof(char*); k++) {
+            char* F = compare_funcs[k];
+?>
+bool32_t @T@_@F@_@T2@(@T@_t x, @T2@_t y)
+<?c
+        }
+    }
+
+?>
+/* pre-converted functions; int versions will, if necessarily, call round_default before. */
+<?c
+    for(int j = 0; j < sizeof(float_types)/sizeof(char*) + sizeof(int_types)/sizeof(char); j++) {
+        char* T2;
+        if(j < sizeof(float_types)/sizeof(char*)) {
+            T2 = float_types[j];
+        } else {
+            T2 = int_types[j - sizeof(float_types)/sizeof(char*)];
+        }
 
         for(int k = 0; k < sizeof(unary_functions)/sizeof(char*); k++) {
             char* F = unary_functions[k];
-    ?>
-    @T@_t @T@_from_@T2@_@F@(@T2@_t x);
-    <?c
+?>
+@T2@_t @T2@_from_@T@_@F@(@T@_t x);
+<?c
         }
         for(int k = 0; k < sizeof(binary_functions)/sizeof(char*); k++) {
             char* F = binary_functions[k];
-    ?>
-    @T@_t @T@_from_@T2@_@F@(@T2@_t x, @T2@_t y);
-    <?c
+?>
+@T2@_t @T2@_from_@T@_@F@(@T@_t x, @T@_t y);
+<?c
         }
         for(int k = 0; k < sizeof(trinary_functions)/sizeof(char*); k++) {
             char* F = trinary_functions[k];
-    ?>
-    @T@_t @T@_from_@T2@_@F@(@T2@_t x, @T2@_t y, @T2@_t z);
-    <?c
+?>
+@T2@_t @T2@_from_@T@_@F@(@T@_t x, @T@_t y, @T@_t z);
+<?c
         }
-
+        for(int k = 0; k < sizeof(binary_with_int_functions)/sizeof(char*); k++) {
+            char* F = binary_with_int_functions[k];
+            for(int l = 0; l < sizeof(int_types)/sizeof(char*); l++) {
+                char* Ti = int_types[l];
+?>
+@T2@_t @T2@_from_@T@_@F@_@Ti@(@T@_t x, @Ti@_t n);
+<?c
+            }
+        }
     }
 }
 ?>
-
-
-
-
-
-
-
-float32_t float32_multiply_with_i32pow2(float32_t x, int32_t p);
-float64_t float64_multiply_with_i32pow2(float64_t x, int32_t p);
-float32_t float32_multiply_with_i64pow2(float32_t x, int64_t p);
-float64_t float64_multiply_with_i64pow2(float64_t x, int64_t p);
-float32_t float32_1_plus_x_pown64(float32_t x, int64_t n);
-float64_t float64_1_plus_x_pown64(float64_t x, int64_t n);
-float32_t float32_pown64(float32_t x, int64_t n);
-float64_t float64_pown64(float64_t x, int64_t n);
-float32_t float32_rootn64(float32_t x, int64_t n);
-float64_t float64_rootn64(float64_t x, int64_t n);
-
-float32_t float32_split_into_mantissa_fraction_and_i32log2(float32_t x, int32_t* p_log2);
-float64_t float64_split_into_mantissa_fraction_and_i32log2(float64_t x, int32_t* p_log2);
-float32_t float32_split_into_mantissa_fraction_and_i64log2(float32_t x, int64_t* p_log2);
-float64_t float64_split_into_mantissa_fraction_and_i64log2(float64_t x, int64_t* p_log2);
-float32_t float32_split_into_fraction_and_floor(float32_t x, float32_t* p_floor);
-float64_t float64_split_into_fraction_and_floor(float64_t x, float64_t* p_floor);
-int32_t float32_i32log2(float32_t x);
-int32_t float64_i32log2(float64_t x);
-int64_t float32_i64log2(float32_t x);
-int64_t float64_i64log2(float64_t x);
-
-
-float32_t float32_round_with_direction_and_test_bitwidth(float32_t x, float_rounding_direction_t direction, uint32_t bitwidth);
-float64_t float64_round_with_direction_and_test_bitwidth(float64_t x, float_rounding_direction_t direction, uint32_t bitwidth);
-float32_t float32_round_with_direction_and_test_u_bitwidth(float32_t x, float_rounding_direction_t direction, uint32_t bitwidth);
-float64_t float64_round_with_direction_and_test_u_bitwidth(float64_t x, float_rounding_direction_t direction, uint32_t bitwidth);
-float32_t float32_round_with_direction_and_test_bitwidth_raise_inexact(float32_t x, float_rounding_direction_t direction, uint32_t bitwidth);
-float64_t float64_round_with_direction_and_test_bitwidth_raise_inexact(float64_t x, float_rounding_direction_t direction, uint32_t bitwidth);
-float32_t float32_round_with_direction_and_test_u_bitwidth_raise_inexact(float32_t x, float_rounding_direction_t direction, uint32_t bitwidth);
-float64_t float64_round_with_direction_and_test_u_bitwidth_raise_inexact(float64_t x, float_rounding_direction_t direction, uint32_t bitwidth);
-
-int32_t float32_i32round_default(float32_t x);
-int32_t float64_i32round_default(float64_t x);
-int64_t float32_i64round_default(float32_t x);
-int64_t float64_i64round_default(float64_t x);
-int32_t float32_i32round_with_half_away_from_zero(float32_t x);
-int32_t float64_i32round_with_half_away_from_zero(float64_t x);
-int64_t float32_i64round_with_half_away_from_zero(float32_t x);
-int64_t float64_i64round_with_half_away_from_zero(float64_t x);
-
 
 
 /* this is the only not allowed for decimal floating point */
@@ -396,11 +426,6 @@ float64_t  float64_IEE_remainder_and_quotient_i32(float64_t x, float64_t y, int3
 
 
 
-float32_t  float32_qnan(const char* tagp);
-float64_t  float64_qnan(const char* tagp);
-    /* not in libc */
-float32_t  float32_snan(const char* tagp);
-float64_t  float64_snan(const char* tagp);
 
 
 
@@ -409,47 +434,6 @@ float64_t  float64_snan(const char* tagp);
 
 
 
-
-float_pair_ordering_t float32_qnansafe_compare_to_float32(float32_t x, float32_t y);
-float_pair_ordering_t float32_qnansafe_compare_to_float64(float32_t x, float64_t y);
-float_pair_ordering_t float64_qnansafe_compare_to_float32(float64_t x, float32_t y);
-float_pair_ordering_t float64_qnansafe_compare_to_float64(float64_t x, float64_t y);
-
-
-bool32_t float32_qnansafe_is_greater_than_float32(float32_t x, float32_t y);
-bool32_t float32_qnansafe_is_greater_than_float64(float32_t x, float64_t y);
-bool32_t float64_qnansafe_is_greater_than_float32(float64_t x, float32_t y);
-bool32_t float64_qnansafe_is_greater_than_float64(float64_t x, float64_t y);
-
-bool32_t float32_qnansafe_is_greater_than_or_equal_to_float32(float32_t x, float32_t y);
-bool32_t float32_qnansafe_is_greater_than_or_equal_to_float64(float32_t x, float64_t y);
-bool32_t float64_qnansafe_is_greater_than_or_equal_to_float32(float64_t x, float32_t y);
-bool32_t float64_qnansafe_is_greater_than_or_equal_to_float64(float64_t x, float64_t y);
-
-bool32_t float32_qnansafe_is_less_than_float32(float32_t x, float32_t y);
-bool32_t float32_qnansafe_is_less_than_float64(float32_t x, float64_t y);
-bool32_t float64_qnansafe_is_less_than_float32(float64_t x, float32_t y);
-bool32_t float64_qnansafe_is_less_than_float64(float64_t x, float64_t y);
-
-bool32_t float32_qnansafe_is_less_than_or_equal_to_float32(float32_t x, float32_t y);
-bool32_t float32_qnansafe_is_less_than_or_equal_to_float64(float32_t x, float64_t y);
-bool32_t float64_qnansafe_is_less_than_or_equal_to_float32(float64_t x, float32_t y);
-bool32_t float64_qnansafe_is_less_than_or_equal_to_float64(float64_t x, float64_t y);
-
-bool32_t float32_qnansafe_is_less_or_greater_than_float32(float32_t x, float32_t y);
-bool32_t float32_qnansafe_is_less_or_greater_than_float64(float32_t x, float64_t y);
-bool32_t float64_qnansafe_is_less_or_greater_than_float32(float64_t x, float32_t y);
-bool32_t float64_qnansafe_is_less_or_greater_than_float64(float64_t x, float64_t y);
-
-bool32_t float32_qnansafe_pair_is_unordered_float32(float32_t x, float32_t y);
-bool32_t float32_qnansafe_pair_is_unordered_float64(float32_t x, float64_t y);
-bool32_t float64_qnansafe_pair_is_unordered_float32(float64_t x, float32_t y);
-bool32_t float64_qnansafe_pair_is_unordered_float64(float64_t x, float64_t y);
-
-bool32_t float32_nansignalling_is_equal_to_float32(float32_t x, float32_t y);
-bool32_t float32_nansignalling_is_equal_to_float64(float32_t x, float64_t y);
-bool32_t float64_nansignalling_is_equal_to_float32(float64_t x, float32_t y);
-bool32_t float64_nansignalling_is_equal_to_float64(float64_t x, float64_t y);
 
 
 
