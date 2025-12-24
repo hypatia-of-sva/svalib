@@ -710,6 +710,8 @@ void mem_copy(mem_t src, mem_t dst);
 void mem_zero(mem_t block); 
 void mem_search(mem_t block, mem_t search_data);
 
+uint16_t mem_area_code_get(void);
+void mem_area_code_set(uint16_t code);
 
 
 /* string library */
