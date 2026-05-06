@@ -3569,106 +3569,6 @@ gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer) {
 
 
 
-
-
-
-
-
-typedef enum gfx_texture_zooming_in_mode_t {
-    GFX_TEXTURE_ZOOMING_IN_MODE_NEAREST_ELEMENT = 0,
-    GFX_TEXTURE_ZOOMING_IN_MODE_LINEAR_AVERAGE_OF_FOUR = 1,
-    GFX_TEXTURE_ZOOMING_IN_MODE_MAX_ENUM = 0x7f
-} gfx_texture_zooming_in_mode_t;
-typedef enum gfx_texture_zooming_out_mode_t {
-    GFX_TEXTURE_ZOOMING_OUT_MODE_NEAREST_ELEMENT = 0,
-    GFX_TEXTURE_ZOOMING_OUT_MODE_LINEAR_AVERAGE_OF_FOUR = 1,
-    GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_NEAREST_ELEMENT = 2,
-    GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_LINEAR_AVERAGE_OF_FOUR = 3,
-    GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_NEAREST_ELEMENT = 4,
-    GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_LINEAR_AVERAGE_OF_FOUR = 5,
-    GFX_TEXTURE_ZOOMING_OUT_MODE_MAX_ENUM = 0x7f
-} gfx_texture_zooming_out_mode_t;
-typedef enum gfx_texture_wrapping_mode_t {
-    GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE = 0,
-    GFX_TEXTURE_WRAPPING_MODE_REPEAT = 1,
-    GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT = 2,
-    GFX_TEXTURE_WRAPPING_MODE_MAX_ENUM = 0x7f
-} gfx_texture_wrapping_mode_t;
-typedef enum gfx_texture_image_data_format_t {
-    GFX_TEXTURE_IMAGE_DATA_FORMAT_RGBA = 0,
-    GFX_TEXTURE_IMAGE_DATA_FORMAT_RGB = 1,
-    GFX_TEXTURE_IMAGE_DATA_FORMAT_MAX_ENUM = 0x7f
-} gfx_texture_image_data_format_t;
-typedef enum gfx_cubemap_facetype_t {
-    GFX_CUBE_MAP_FACETYPE_POSITIVE_X = 0,
-    GFX_CUBE_MAP_FACETYPE_NEGATIVE_X = 1,
-    GFX_CUBE_MAP_FACETYPE_POSITIVE_Y = 2,
-    GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y = 3,
-    GFX_CUBE_MAP_FACETYPE_POSITIVE_Z = 4,
-    GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z = 5,
-    GFX_CUBE_MAP_FACETYPE_MAX_ENUM = 0x7f
-} gfx_cubemap_facetype_t;
-
-typedef struct gfx_texture_image_data_t {
-    gfx_texture_image_data_format_t format;
-    union {
-        gfx_image_data_rgba_t rgba_data;
-        gfx_image_data_rgb_t rgb_data;
-    } data;
-} gfx_texture_image_data_t;
-typedef struct gfx_texture_dimensions_t {
-    /* not embedded in the image data struct due to GLFW compatibility. */
-    int width, height;
-} gfx_texture_dimensions_t;
-typedef struct gfx_cubemap_dimensions_t {
-    gfx_texture_dimensions_t x_pos, x_neg, y_pos, y_neg, z_pos, z_neg;
-} gfx_cubemap_dimensions_t;
-typedef struct gfx_texture_config_t {
-    gfx_texture_zooming_in_mode_t magnifying_mode;
-    gfx_texture_zooming_out_mode_t minifying_mode;
-    gfx_texture_wrapping_mode_t horizontal_wrap, vertical_wrap;
-} gfx_texture_config_t;
-typedef struct gfx_cubemap_config_t {
-    gfx_texture_zooming_in_mode_t magnifying_mode;
-    gfx_texture_zooming_out_mode_t minifying_mode;
-    /* wrapping mode(s) always CLAMP_TO_EDGE according to https://wikis.khronos.org/opengl/Common_Mistakes */
-} gfx_cubemap_config_t;
-typedef struct gfx_texture_t {
-    uint32_t id;
-    gfx_texture_image_data_format_t format;
-    gfx_texture_dimensions_t dimensions;
-    gfx_texture_config_t config;
-} gfx_texture_t;
-typedef struct gfx_cubemap_t {
-    uint32_t id;
-    gfx_texture_image_data_format_t format;
-    gfx_cubemap_dimensions_t dimensions;
-    gfx_texture_config_t config;
-    struct { bool positive_x, negative_x, positive_y, negative_y, positive_z, negative_z; } has_face_been_created;
-} gfx_cubemap_t;
-
-
-
-
-
-
-gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture);
-gfx_result_t gfx_texture_rewrite(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_texture_image_data_t data);
-gfx_result_t gfx_texture_destroy(gfx_texture_t texture);
-
-
-        /* if any of the pointers are NULL, then that face will not be created */
-gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_texture_image_data_t* x_neg_data,
-                                gfx_texture_image_data_t* y_pos_data, gfx_texture_image_data_t* y_neg_data,
-                                gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap);
-gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_image_data_t data);
-gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_texture_image_data_t data);
-gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
-
-
-
-
-
 static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GLuint old_id, GLuint new_id) {
     GLenum targetinfo, e;
     GLuint i;
@@ -3953,7 +3853,6 @@ static gfx_result_t gfx_texture_destroy_generic(GLuint id) {
 }
 
 gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture) {
-    GLenum texture_unit;
     GLuint id, i;
     gfx_result_t r;
     GLenum wrap_s, wrap_t;
@@ -3982,7 +3881,6 @@ gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_confi
 
     r = gfx_texture_image_safe(GL_TEXTURE_2D, data, &dim);
     if(r != GFX_OK) { return r; }
-
 
     /* GL 3+ and GL ES 2 mipmap generation: */
     if(g_gl.version == GLES2 || g_gl.version == GL3Core) {
@@ -4112,16 +4010,246 @@ gfx_result_t gfx_texture_destroy(gfx_texture_t texture) {
 }
 
 
-
-
-
 gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_texture_image_data_t* x_neg_data,
                                 gfx_texture_image_data_t* y_pos_data, gfx_texture_image_data_t* y_neg_data,
-                                gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap);
-gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_image_data_t data);
-gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_texture_image_data_t data);
-gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
+                                gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap) {
+    GLuint id, i;
+    gfx_result_t r;
+    
+    if(cubemap == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
 
+    g_gl.GenTextures(1, &id);
+    if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
+        return GFX_ERROR_UNKNOWN;
+    }
+
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, 0, id);
+    if(r != GFX_OK) { return r; }
+
+
+    /* GL 2.1 mipmap generation hint: */
+    if(g_gl.version == GL2) {
+        g_gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_GENERATE_MIPMAP, GL_TRUE);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+    }
+    
+    r = gfx_texture_set_zooming_modes(GL_TEXTURE_2D, config.magnifying_mode, config.minifying_mode);
+    if(r != GFX_OK) { return r; }
+    
+    g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    switch(g_gl.GetError() != GL_NO_ERROR) {
+    case GL_NO_ERROR:
+        break;
+    case GL_INVALID_ENUM:
+        /* explicitly allowed since some GL versions need the GL_TEXTURE_WRAP_R param and some don't allow it */
+        break;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+    if(r != GFX_OK) { return r; }
+    
+    
+    cubemap[0].id = id;
+    cubemap[0].config = config;
+    cubemap[0].face_data = {0};
+    
+    if(x_pos_data != NULL) {
+        r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_POSITIVE_X, x_pos_data[0]);
+        if(r != GFX_OK) { return r; }
+    }
+    if(x_neg_data != NULL) {
+        r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_NEGATIVE_X, x_neg_data[0]);
+        if(r != GFX_OK) { return r; }
+    }
+    if(y_pos_data != NULL) {
+        r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_POSITIVE_Y, y_pos_data[0]);
+        if(r != GFX_OK) { return r; }
+    }
+    if(y_neg_data != NULL) {
+        r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y, y_neg_data[0]);
+        if(r != GFX_OK) { return r; }
+    }
+    if(z_pos_data != NULL) {
+        r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_POSITIVE_Z, z_pos_data[0]);
+        if(r != GFX_OK) { return r; }
+    }
+    if(z_neg_data != NULL) {
+        r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z, z_neg_data[0]);
+        if(r != GFX_OK) { return r; }
+    }
+
+    return GFX_OK;
+}
+gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t face, gfx_texture_image_data_t data) {
+    GLenum image_target;
+    gfx_cubemap_face_data_t* data_ptr;
+    gfx_texture_dimensions_t dim;
+    bool other_faces_fully_created;
+    
+    if(cubemap == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+        
+    switch(face) {
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_X:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_X;
+        data_ptr = &(cubemap[0].face_data.positive_x);
+        other_faces_fully_created = (cubemap[0].face_data.negative_x.created
+            && cubemap[0].face_data.positive_y.created && cubemap[0].face_data.negative_y.created
+            && cubemap[0].face_data.positive_z.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_X:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_X;
+        data_ptr = &(cubemap[0].face_data.negative_x);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.positive_y.created && cubemap[0].face_data.negative_y.created
+            && cubemap[0].face_data.positive_z.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_Y:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_Y;
+        data_ptr = &(cubemap[0].face_data.positive_y);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.negative_x.created && cubemap[0].face_data.negative_y.created
+            && cubemap[0].face_data.positive_z.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_Y;
+        data_ptr = &(cubemap[0].face_data.negative_y);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.negative_x.created && cubemap[0].face_data.positive_y.created
+            && cubemap[0].face_data.positive_z.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_Z:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_Z;
+        data_ptr = &(cubemap[0].face_data.positive_z);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.negative_x.created && cubemap[0].face_data.positive_y.created
+            && cubemap[0].face_data.negative_y.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
+        data_ptr = &(cubemap[0].face_data.negative_z);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.negative_x.created && cubemap[0].face_data.positive_y.created
+            && cubemap[0].face_data.negative_y.created && cubemap[0].face_data.positive_z.created);
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+    if(data_ptr[0].created) {
+        return GFX_ERROR_OPERATION_INVALID;
+    }
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, 0, id);
+    if(r != GFX_OK) { return r; }
+    
+#ifdef GFX_DEBUG
+    r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, cubemap[0].config.magnifying_mode, cubemap[0].config.minifying_mode);
+    if(r != GFX_OK) { return r; }
+#endif
+
+    r = gfx_texture_image_safe(image_target, data, &dim);
+    if(r != GFX_OK) { return r; }
+    
+    if(other_faces_fully_created) {
+        /* GL 3+ and GL ES 2 mipmap generation _only when cubemap face-complete_: */
+        if(g_gl.version == GLES2 || g_gl.version == GL3Core) {
+            g_gl.GenerateMipmap(GL_TEXTURE_2D);
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+        }
+    }
+
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+    if(r != GFX_OK) { return r; }
+    
+    data_ptr[0].created = true;
+    data_ptr[0].format = data.format;
+    data_ptr[0].dimensions = dim;
+    
+    return GFX_OK;
+}
+gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_texture_image_data_t data) {
+    GLenum image_target;
+    gfx_cubemap_face_data_t face_data;
+    
+    if(cubemap == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+    switch(face) {
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_X:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_X;
+        face_data = cubemap[0].face_data.positive_x;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_X:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_X;
+        face_data = cubemap[0].face_data.negative_x;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_Y:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_Y;
+        face_data = cubemap[0].face_data.positive_y;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_Y;
+        face_data = cubemap[0].face_data.negative_y;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_Z:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_Z;
+        face_data = cubemap[0].face_data.positive_z;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
+        face_data = cubemap[0].face_data.negative_z;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+    if(!face_data.created) {
+        return GFX_ERROR_OPERATION_INVALID;
+    }
+    
+    if(!face_data.format != data.format) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, 0, id);
+    if(r != GFX_OK) { return r; }
+    
+#ifdef GFX_DEBUG
+    r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, cubemap[0].config.magnifying_mode, cubemap[0].config.minifying_mode);
+    if(r != GFX_OK) { return r; }
+#endif
+
+    r = gfx_texture_subimage_safe(image_target, data, offset_rect, face_data.dimensions);
+    if(r != GFX_OK) { return r; }
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+    if(r != GFX_OK) { return r; }
+    
+    return GFX_OK;
+}
+gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap) {
+    return gfx_texture_destroy_generic(cubemap.id);
+}
 
 
 

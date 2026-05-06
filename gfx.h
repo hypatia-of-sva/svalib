@@ -26,7 +26,8 @@ typedef enum gfx_result_t {
     GFX_ERROR_OUT_OF_MEMORY = -8,
     GFX_ERROR_TEXTURE_TOO_BIG = -9,
     GFX_ERROR_TEXTURE_NOT_POWER_OF_TWO_UNSUPPORTED = -10,
-    GFX_ERROR_UNKNOWN = -11,
+    GFX_ERROR_OPERATION_INVALID = -11,
+    GFX_ERROR_UNKNOWN = -12,
 } gfx_result_t;
 typedef enum gfx_event_type_t {
     GFX_EVENT_MONITOR_CONNECTED = 0,
@@ -309,6 +310,40 @@ typedef enum gfx_buffer_usage_t {
     GFX_BUFFER_USAGE_ONE_TIME = 2,
     GFX_BUFFER_USAGE_MAX_ENUM = 0x7f
 } gfx_buffer_usage_t;
+typedef enum gfx_texture_zooming_in_mode_t {
+    GFX_TEXTURE_ZOOMING_IN_MODE_NEAREST_ELEMENT = 0,
+    GFX_TEXTURE_ZOOMING_IN_MODE_LINEAR_AVERAGE_OF_FOUR = 1,
+    GFX_TEXTURE_ZOOMING_IN_MODE_MAX_ENUM = 0x7f
+} gfx_texture_zooming_in_mode_t;
+typedef enum gfx_texture_zooming_out_mode_t {
+    GFX_TEXTURE_ZOOMING_OUT_MODE_NEAREST_ELEMENT = 0,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_LINEAR_AVERAGE_OF_FOUR = 1,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_NEAREST_ELEMENT = 2,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_LINEAR_AVERAGE_OF_FOUR = 3,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_NEAREST_ELEMENT = 4,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_LINEAR_AVERAGE_OF_FOUR = 5,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_MAX_ENUM = 0x7f
+} gfx_texture_zooming_out_mode_t;
+typedef enum gfx_texture_wrapping_mode_t {
+    GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE = 0,
+    GFX_TEXTURE_WRAPPING_MODE_REPEAT = 1,
+    GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT = 2,
+    GFX_TEXTURE_WRAPPING_MODE_MAX_ENUM = 0x7f
+} gfx_texture_wrapping_mode_t;
+typedef enum gfx_texture_image_data_format_t {
+    GFX_TEXTURE_IMAGE_DATA_FORMAT_RGBA = 0,
+    GFX_TEXTURE_IMAGE_DATA_FORMAT_RGB = 1,
+    GFX_TEXTURE_IMAGE_DATA_FORMAT_MAX_ENUM = 0x7f
+} gfx_texture_image_data_format_t;
+typedef enum gfx_cubemap_facetype_t {
+    GFX_CUBE_MAP_FACETYPE_POSITIVE_X = 0,
+    GFX_CUBE_MAP_FACETYPE_NEGATIVE_X = 1,
+    GFX_CUBE_MAP_FACETYPE_POSITIVE_Y = 2,
+    GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y = 3,
+    GFX_CUBE_MAP_FACETYPE_POSITIVE_Z = 4,
+    GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z = 5,
+    GFX_CUBE_MAP_FACETYPE_MAX_ENUM = 0x7f
+} gfx_cubemap_facetype_t;
 
 typedef struct gfx_event_t {
     gfx_event_type_t type;
@@ -460,6 +495,44 @@ typedef struct gfx_index_buffer_t {
     size_t size;
     int usages; /* to test for GFX_BUFFER_USAGE_ONE_TIME ? */
 } gfx_index_buffer_t;
+typedef struct gfx_texture_image_data_t {
+    gfx_texture_image_data_format_t format;
+    union {
+        gfx_image_data_rgba_t rgba_data;
+        gfx_image_data_rgb_t rgb_data;
+    } data;
+} gfx_texture_image_data_t;
+typedef struct gfx_texture_dimensions_t {
+    /* not embedded in the image data struct due to GLFW compatibility. */
+    int width, height;
+} gfx_texture_dimensions_t;
+typedef struct gfx_cubemap_face_data_t {
+    bool created;
+    gfx_texture_image_data_format_t format;
+    gfx_texture_dimensions_t dimensions;
+} gfx_cubemap_face_data_t;
+typedef struct gfx_texture_config_t {
+    gfx_texture_zooming_in_mode_t magnifying_mode;
+    gfx_texture_zooming_out_mode_t minifying_mode;
+    gfx_texture_wrapping_mode_t horizontal_wrap, vertical_wrap;
+} gfx_texture_config_t;
+typedef struct gfx_cubemap_config_t {
+    gfx_texture_zooming_in_mode_t magnifying_mode;
+    gfx_texture_zooming_out_mode_t minifying_mode;
+    /* wrapping mode(s) always CLAMP_TO_EDGE according to https://wikis.khronos.org/opengl/Common_Mistakes */
+} gfx_cubemap_config_t;
+typedef struct gfx_texture_t {
+    uint32_t id;
+    gfx_texture_image_data_format_t format;
+    gfx_texture_dimensions_t dimensions;
+    gfx_texture_config_t config;
+} gfx_texture_t;
+typedef struct gfx_cubemap_t {
+    uint32_t id;
+    gfx_cubemap_config_t config;
+    struct { gfx_cubemap_face_data_t positive_x, negative_x, positive_y, negative_y, positive_z, negative_z; } face_data;
+} gfx_cubemap_t;
+
 
 /* icon is optional and can be left NULL */
 gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window_icon_t* icon);
@@ -496,5 +569,22 @@ gfx_result_t gfx_vertex_buffer_destroy(gfx_vertex_buffer_t buffer);
 gfx_result_t gfx_index_buffer_create(gfx_buffer_usage_t usage, size_t size, void* ptr, gfx_index_buffer_t* buffer);
 gfx_result_t gfx_index_buffer_rewrite(gfx_index_buffer_t buffer, size_t offset, size_t size, void* ptr);
 gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer);
+
+
+
+gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture);
+gfx_result_t gfx_texture_rewrite(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_texture_image_data_t data);
+gfx_result_t gfx_texture_destroy(gfx_texture_t texture);
+
+
+        /* if any of the pointers are NULL, then that face will not be created */
+gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_texture_image_data_t* x_neg_data,
+                                gfx_texture_image_data_t* y_pos_data, gfx_texture_image_data_t* y_neg_data,
+                                gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap);
+gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t face, gfx_texture_image_data_t data);
+gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_texture_image_data_t data);
+gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
+
+
 
 #endif
