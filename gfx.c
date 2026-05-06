@@ -3307,7 +3307,7 @@ gfx_result_t gfx_params_reset(void) {
 }
 
 gfx_result_t gfx_render(void) {
-    g_gl.Flush();
+    g_gl.Flush(); /* This might be unnecessary but we keep it in just in case */
     
     glfwSwapBuffers(g_glfw.window);
     if(glfwGetError(NULL)) {
@@ -3323,10 +3323,10 @@ gfx_result_t gfx_clear(void) {
         mask |= GL_COLOR_BUFFER_BIT;
     }
     if(g_gl.state.clear.depth_enabled) {
-        mask |= stencil_enabled;
+        mask |=  GL_DEPTH_BUFFER_BIT;
     }
     if(g_gl.state.clear.stencil_enabled) {
-        mask |= stencil_enabled;
+        mask |= GL_STENCIL_BUFFER_BIT;
     }
     g_gl.Clear(mask);
     if(g_gl.GetError() != GL_NO_ERROR) {
@@ -3385,6 +3385,7 @@ static gfx_result_t gfx_buffer_bind_safe(GLenum target, GLuint old_id, GLuint ne
             return GFX_ERROR_INVALID_PARAM;
     }
 
+#ifdef GFX_DEBUG
     g_gl.GetIntegerv(targetinfo, &i);
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
@@ -3392,12 +3393,14 @@ static gfx_result_t gfx_buffer_bind_safe(GLenum target, GLuint old_id, GLuint ne
     if(i != old_id) {
         return GFX_ERROR_API_OTHER;
     }
+#endif
 
     g_gl.BindBuffer(target, new_id);
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
 
+#ifdef GFX_DEBUG
     g_gl.GetIntegerv(targetinfo, &i);
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
@@ -3405,6 +3408,7 @@ static gfx_result_t gfx_buffer_bind_safe(GLenum target, GLuint old_id, GLuint ne
     if(i != new_id) {
         return GFX_ERROR_API_OTHER;
     }
+#endif
 
     return GFX_OK;
 }
@@ -3495,6 +3499,7 @@ static gfx_result_t gfx_buffer_rewrite_generic(gfx_internal_buffer_type_t type, 
     r = gfx_buffer_bind_safe(target, 0, id);
     if(r != GFX_OK) { return r; }
     
+#ifdef GFX_DEBUG
     g_gl.GetBufferParameteriv(target, GL_BUFFER_SIZE, &i);
     if(i != init_size) {
         g_gl.BindBuffer(target, 0);
@@ -3506,6 +3511,7 @@ static gfx_result_t gfx_buffer_rewrite_generic(gfx_internal_buffer_type_t type, 
         g_gl.BindBuffer(target, 0);
         return GFX_ERROR_API_OTHER;
     }
+#endif
     
     g_gl.BufferSubData(target, offset, size, ptr);
     if(i != GL_DYNAMIC_DRAW) {
@@ -3568,16 +3574,20 @@ gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer) {
 
 
 
-typedef enum gfx_texture_zoom_mode_t {
-    GFX_TEXTURE_ZOOM_MODE_NEAREST_ELEMENT = 0,
-    GFX_TEXTURE_ZOOM_MODE_LINEAR_AVERAGE_OF_FOUR = 1,
-    /* mip-map modes are only used for zooming out/minifying, not zooming in/magnifying  */
-    GFX_TEXTURE_ZOOM_MODE_MATCHING_MIPMAP_NEAREST_ELEMENT = 2,
-    GFX_TEXTURE_ZOOM_MODE_MATCHING_MIPMAP_LINEAR_AVERAGE_OF_FOUR = 3,
-    GFX_TEXTURE_ZOOM_MODE_TWO_MIPMAP_AVERAGE_NEAREST_ELEMENT = 4,
-    GFX_TEXTURE_ZOOM_MODE_TWO_MIPMAP_AVERAGE_LINEAR_AVERAGE_OF_FOUR = 5,
-    GFX_TEXTURE_ZOOM_MODE_MAX_ENUM = 0x7f
-} gfx_texture_zoom_mode_t;
+typedef enum gfx_texture_zooming_in_mode_t {
+    GFX_TEXTURE_ZOOMING_IN_MODE_NEAREST_ELEMENT = 0,
+    GFX_TEXTURE_ZOOMING_IN_MODE_LINEAR_AVERAGE_OF_FOUR = 1,
+    GFX_TEXTURE_ZOOMING_IN_MODE_MAX_ENUM = 0x7f
+} gfx_texture_zooming_in_mode_t;
+typedef enum gfx_texture_zooming_out_mode_t {
+    GFX_TEXTURE_ZOOMING_OUT_MODE_NEAREST_ELEMENT = 0,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_LINEAR_AVERAGE_OF_FOUR = 1,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_NEAREST_ELEMENT = 2,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_LINEAR_AVERAGE_OF_FOUR = 3,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_NEAREST_ELEMENT = 4,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_LINEAR_AVERAGE_OF_FOUR = 5,
+    GFX_TEXTURE_ZOOMING_OUT_MODE_MAX_ENUM = 0x7f
+} gfx_texture_zooming_out_mode_t;
 typedef enum gfx_texture_wrapping_mode_t {
     GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE = 0,
     GFX_TEXTURE_WRAPPING_MODE_REPEAT = 1,
@@ -3589,6 +3599,15 @@ typedef enum gfx_texture_image_data_format_t {
     GFX_TEXTURE_IMAGE_DATA_FORMAT_RGB = 1,
     GFX_TEXTURE_IMAGE_DATA_FORMAT_MAX_ENUM = 0x7f
 } gfx_texture_image_data_format_t;
+typedef enum gfx_cubemap_facetype_t {
+    GFX_CUBE_MAP_FACETYPE_POSITIVE_X = 0,
+    GFX_CUBE_MAP_FACETYPE_NEGATIVE_X = 1,
+    GFX_CUBE_MAP_FACETYPE_POSITIVE_Y = 2,
+    GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y = 3,
+    GFX_CUBE_MAP_FACETYPE_POSITIVE_Z = 4,
+    GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z = 5,
+    GFX_CUBE_MAP_FACETYPE_MAX_ENUM = 0x7f
+} gfx_cubemap_facetype_t;
 
 typedef struct gfx_texture_image_data_t {
     gfx_texture_image_data_format_t format;
@@ -3597,26 +3616,36 @@ typedef struct gfx_texture_image_data_t {
         gfx_image_data_rgb_t rgb_data;
     } data;
 } gfx_texture_image_data_t;
-typedef struct gfx_texture_image_dimensions_t {
+typedef struct gfx_texture_dimensions_t {
+    /* not embedded in the image data struct due to GLFW compatibility. */
     int width, height;
-} gfx_texture_image_dimensions_t;
-
+} gfx_texture_dimensions_t;
+typedef struct gfx_cubemap_dimensions_t {
+    gfx_texture_dimensions_t x_pos, x_neg, y_pos, y_neg, z_pos, z_neg;
+} gfx_cubemap_dimensions_t;
 typedef struct gfx_texture_config_t {
-    gfx_texture_zoom_mode_t magnifying_mode, minifying_mode;
+    gfx_texture_zooming_in_mode_t magnifying_mode;
+    gfx_texture_zooming_out_mode_t minifying_mode;
     gfx_texture_wrapping_mode_t horizontal_wrap, vertical_wrap;
 } gfx_texture_config_t;
-
-
-
+typedef struct gfx_cubemap_config_t {
+    gfx_texture_zooming_in_mode_t magnifying_mode;
+    gfx_texture_zooming_out_mode_t minifying_mode;
+    /* wrapping mode(s) always CLAMP_TO_EDGE according to https://wikis.khronos.org/opengl/Common_Mistakes */
+} gfx_cubemap_config_t;
 typedef struct gfx_texture_t {
-    gfx_texture_image_dimensions_t dimensions;
+    uint32_t id;
+    gfx_texture_image_data_format_t format;
+    gfx_texture_dimensions_t dimensions;
     gfx_texture_config_t config;
 } gfx_texture_t;
-
 typedef struct gfx_cubemap_t {
-    struct { gfx_texture_image_dimensions_t x_pos, x_neg, y_pos, y_neg, z_pos, z_neg; } dimensions;
+    uint32_t id;
+    gfx_texture_image_data_format_t format;
+    gfx_cubemap_dimensions_t dimensions;
     gfx_texture_config_t config;
-} gfx_texture_t;
+    struct { bool positive_x, negative_x, positive_y, negative_y, positive_z, negative_z; } has_face_been_created;
+} gfx_cubemap_t;
 
 
 
@@ -3624,10 +3653,17 @@ typedef struct gfx_cubemap_t {
 
 
 gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture);
+gfx_result_t gfx_texture_rewrite(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_texture_image_data_t data);
+gfx_result_t gfx_texture_destroy(gfx_texture_t texture);
 
-gfx_result_t gfx_texture_create(gfx_texture_image_data_t x_pos_data, gfx_texture_image_data_t x_neg_data,
-                                gfx_texture_image_data_t y_pos_data, gfx_texture_image_data_t y_neg_data,
-                                gfx_texture_image_data_t z_pos_data, gfx_texture_image_data_t z_neg_data, gfx_texture_config_t config, gfx_cubemap_t* cubemap);
+
+        /* if any of the pointers are NULL, then that face will not be created */
+gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_texture_image_data_t* x_neg_data,
+                                gfx_texture_image_data_t* y_pos_data, gfx_texture_image_data_t* y_neg_data,
+                                gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap);
+gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_image_data_t data);
+gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_texture_image_data_t data);
+gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
 
 
 
@@ -3653,6 +3689,7 @@ static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GL
         return GFX_ERROR_UNKNOWN;
     }
 
+#ifdef GFX_DEBUG
     g_gl.GetIntegerv(GL_ACTIVE_TEXTURE, &e);
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
@@ -3668,12 +3705,14 @@ static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GL
     if(i != old_id) {
         return GFX_ERROR_API_OTHER;
     }
+#endif
 
     g_gl.BindTexture(target, new_id);
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
 
+#ifdef GFX_DEBUG
     g_gl.GetIntegerv(targetinfo, &i);
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
@@ -3681,10 +3720,11 @@ static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GL
     if(i != new_id) {
         return GFX_ERROR_API_OTHER;
     }
+#endif
 
     return GFX_OK;
 }
-static gfx_result_t gfx_texture_image_safe(GLenum image_target, gfx_texture_image_data_t image_data) {
+static gfx_result_t gfx_texture_image_safe(GLenum image_target, gfx_texture_image_data_t image_data, gfx_texture_dimensions_t* dimensions_out) {
     GLenum format; GLsizei width, height; const void* ptr;
     switch(image_data.format) {
     case GFX_TEXTURE_IMAGE_DATA_FORMAT_RGBA:
@@ -3692,24 +3732,236 @@ static gfx_result_t gfx_texture_image_safe(GLenum image_target, gfx_texture_imag
         width = image_data.data.rgba_data.width;
         height = image_data.data.rgba_data.height;
         ptr = image_data.data.rgba_data.pixel_data;
-        break
+        break;
     case GFX_TEXTURE_IMAGE_DATA_FORMAT_RGB:
         format = GL_RGB;
         width = image_data.data.rgb_data.width;
         height = image_data.data.rgb_data.height;
         ptr = image_data.data.rgb_data.pixel_data;
-        break
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+
+
+    int max_2d_size = g_gl.limits.texture.max_image_pixelbuffer_size.regular_2d;
+    int max_cube_size = g_gl.limits.texture.max_image_pixelbuffer_size.cube_map;
+    switch(image_target) {
+    case GL_TEXTURE_2D:
+        if(width < 0 || height < 0) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+        if(width > max_2d_size || height > max_2d_size) {
+            return GFX_ERROR_TEXTURE_TOO_BIG;
+        }
+        break;
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
+        if(width < 0 || height < 0 || width != height) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+        if(width > max_cube_size || height > max_cube_size) {
+            return GFX_ERROR_TEXTURE_TOO_BIG;
+        }
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
     }
 
     g_gl.TexImage2D(image_target, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, ptr);
+    switch(g_gl.GetError()) {
+    case GL_NO_ERROR:
+        break;
+    case GL_INVALID_VALUE:
+        /* This is the only case that generates this error code that we did not exclude already */
+        return GFX_ERROR_TEXTURE_NOT_POWER_OF_TWO_UNSUPPORTED;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    if(dimensions_out != NULL) {
+        dimensions_out[0].width = width;
+        dimensions_out[0].height = height;
+    }
+    
+    return GFX_OK;
 }
+static gfx_result_t gfx_texture_subimage_safe(GLenum image_target, gfx_texture_image_data_t image_data, gfx_texture_dimensions_t offset_rect, gfx_texture_dimensions_t creation_size) {
+    GLenum format; GLsizei width, height; const void* ptr;
+    switch(image_data.format) {
+    case GFX_TEXTURE_IMAGE_DATA_FORMAT_RGBA:
+        format = GL_RGBA;
+        width = image_data.data.rgba_data.width;
+        height = image_data.data.rgba_data.height;
+        ptr = image_data.data.rgba_data.pixel_data;
+        break;
+    case GFX_TEXTURE_IMAGE_DATA_FORMAT_RGB:
+        format = GL_RGB;
+        width = image_data.data.rgb_data.width;
+        height = image_data.data.rgb_data.height;
+        ptr = image_data.data.rgb_data.pixel_data;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+    if(width < 0 || height < 0 || offset_rect.width < 0 || offset_rect.height < 0 ||
+        width + offset_rect.width > creation_size.width || height + offset_rect.height > creation_size.height) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+    switch(image_target) {
+    case GL_TEXTURE_2D:
+        break;
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
 
+    g_gl.TexSubImage2D(image_target, 0, offset_rect.width, offset_rect.height, width, height, format, GL_UNSIGNED_BYTE, ptr);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_set_zooming_modes(GLenum image_target, gfx_texture_zooming_in_mode_t magnifying_mode, gfx_texture_zooming_out_mode_t minifying_mode) {
+    GLenum mag_filter, min_filter;
+    
+    switch(magnifying_mode) {
+    case GFX_TEXTURE_ZOOMING_IN_MODE_NEAREST_ELEMENT:
+        mag_filter = GL_NEAREST;
+        break;
+    case GFX_TEXTURE_ZOOMING_IN_MODE_LINEAR_AVERAGE_OF_FOUR:
+        mag_filter = GL_LINEAR;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    g_gl.TexParameteri(image_target, GL_TEXTURE_MAG_FILTER, mag_filter);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    switch(minifying_mode) {
+    case GFX_TEXTURE_ZOOMING_OUT_MODE_NEAREST_ELEMENT:
+        min_filter = GL_NEAREST;
+        break;
+    case GFX_TEXTURE_ZOOMING_OUT_MODE_LINEAR_AVERAGE_OF_FOUR:
+        min_filter = GL_LINEAR;
+        break;
+    case GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_NEAREST_ELEMENT:
+        min_filter = GL_NEAREST_MIPMAP_NEAREST;
+        break;
+    case GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_LINEAR_AVERAGE_OF_FOUR:
+        min_filter = GL_LINEAR_MIPMAP_NEAREST;
+        break;
+    case GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_NEAREST_ELEMENT:
+        min_filter = GL_NEAREST_MIPMAP_LINEAR;
+        break;
+    case GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_LINEAR_AVERAGE_OF_FOUR:
+        min_filter = GL_LINEAR_MIPMAP_LINEAR;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    g_gl.TexParameteri(image_target, GL_TEXTURE_MIN_FILTER, min_filter);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_check_zooming_modes(GLenum image_target, gfx_texture_zooming_in_mode_t magnifying_mode, gfx_texture_zooming_out_mode_t minifying_mode) {
+    GLint i;
+    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    switch(i) {
+    case GL_NEAREST:
+        if(magnifying_mode != GFX_TEXTURE_ZOOMING_IN_MODE_NEAREST_ELEMENT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_LINEAR:
+        if(magnifying_mode != GFX_TEXTURE_ZOOMING_IN_MODE_LINEAR_AVERAGE_OF_FOUR)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    switch(i) {
+    case GL_NEAREST:
+        if(minifying_mode != GFX_TEXTURE_ZOOMING_OUT_MODE_NEAREST_ELEMENT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_LINEAR:
+        if(minifying_mode != GFX_TEXTURE_ZOOMING_OUT_MODE_LINEAR_AVERAGE_OF_FOUR)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_NEAREST_MIPMAP_NEAREST:
+        if(minifying_mode != GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_NEAREST_ELEMENT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_LINEAR_MIPMAP_NEAREST:
+        if(minifying_mode != GFX_TEXTURE_ZOOMING_OUT_MODE_MATCHING_MIPMAP_LINEAR_AVERAGE_OF_FOUR)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_NEAREST_MIPMAP_LINEAR:
+        if(minifying_mode != GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_NEAREST_ELEMENT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_LINEAR_MIPMAP_LINEAR:
+        if(minifying_mode != GFX_TEXTURE_ZOOMING_OUT_MODE_TWO_MIPMAP_AVERAGE_LINEAR_AVERAGE_OF_FOUR)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_destroy_generic(GLuint id) {
+    if(g_gl.IsTexture(id) != GL_TRUE) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    g_gl.glDeleteTextures(1, &id);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    return GFX_OK;
+}
 
 gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture) {
     GLenum texture_unit;
     GLuint id, i;
     gfx_result_t r;
-
+    GLenum wrap_s, wrap_t;
+    gfx_texture_dimensions_t dim;
+    
+    if(texture == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
 
     g_gl.GenTextures(1, &id);
     if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
@@ -3721,14 +3973,14 @@ gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_confi
 
 
     /* GL 2.1 mipmap generation hint: */
-    if(g_gl.version = GL2) {
+    if(g_gl.version == GL2) {
         g_gl.TexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
     }
 
-    r = gfx_texture_image_safe(GL_TEXTURE_2D, data);
+    r = gfx_texture_image_safe(GL_TEXTURE_2D, data, &dim);
     if(r != GFX_OK) { return r; }
 
 
@@ -3739,12 +3991,140 @@ gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_confi
             return GFX_ERROR_UNKNOWN;
         }
     }
+    
+    r = gfx_texture_set_zooming_modes(GL_TEXTURE_2D, config.magnifying_mode, config.minifying_mode);
+    if(r != GFX_OK) { return r; }
+    
+    switch(config.horizonatal_wrap) {
+    case GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE:
+        wrap_s = GL_CLAMP_TO_EDGE;
+        break;
+    case GFX_TEXTURE_WRAPPING_MODE_REPEAT:
+        wrap_s = GL_REPEAT;
+        break;
+    case GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT:
+        wrap_s = GL_MIRRORED_REPEAT;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_s);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    switch(config.vertical_wrap) {
+    case GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE:
+        wrap_t = GL_CLAMP_TO_EDGE;
+        break;
+    case GFX_TEXTURE_WRAPPING_MODE_REPEAT:
+        wrap_t = GL_REPEAT;
+        break;
+    case GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT:
+        wrap_t = GL_MIRRORED_REPEAT;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_t);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+    if(r != GFX_OK) { return r; }
+    
+    texture[0].id = id;
+    texture[0].format = data.format;
+    texture[0].dimensions = dim;
+    texture[0].config = config;
 
+    return GFX_OK;
+}
+gfx_result_t gfx_texture_rewrite(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_texture_image_data_t data) {
+    GLint i;
+    gfx_result_t r;
+    
+    if(texture.format != data.format) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, 0, texture.id);
+    if(r != GFX_OK) { return r; }
+
+#ifdef GFX_DEBUG
+    r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, texture.config.magnifying_mode, texture.config.minifying_mode);
+    if(r != GFX_OK) { return r; }
+
+    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    switch(i) {
+    case GL_CLAMP_TO_EDGE:
+        if(texture.config.horizonatal_wrap != GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_REPEAT:
+        if(texture.config.horizonatal_wrap != GFX_TEXTURE_WRAPPING_MODE_REPEAT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_MIRRORED_REPEAT:
+        if(texture.config.horizonatal_wrap != GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    switch(i) {
+    case GL_CLAMP_TO_EDGE:
+        if(texture.config.vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_REPEAT:
+        if(texture.config.vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_REPEAT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_MIRRORED_REPEAT:
+        if(texture.config.vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = gfx_texture_subimage_safe(GL_TEXTURE_2D, data, offset_rect, texture.dimensions);
+    if(r != GFX_OK) { return r; }
+    
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
     if(r != GFX_OK) { return r; }
 
     return GFX_OK;
 }
+gfx_result_t gfx_texture_destroy(gfx_texture_t texture) {
+    return gfx_texture_destroy_generic(texture.id);
+}
+
+
+
+
+
+gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_texture_image_data_t* x_neg_data,
+                                gfx_texture_image_data_t* y_pos_data, gfx_texture_image_data_t* y_neg_data,
+                                gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap);
+gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_image_data_t data);
+gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_texture_image_data_t data);
+gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
+
+
+
+
 
 /* unused GL functions and variables:
 
@@ -3757,18 +4137,7 @@ See https://www.khronos.org/opengl/wiki/Common_Mistakes#Automatic_mipmap_generat
 
 texture portion:
 
-glCopyTexImage2D , glCopyTexSubImage2D , glDeleteTextures , glTexImage2D , , glTexSubImage2D
-
-glTexParameterf, glTexParameteri, glTexParameterfv, glTexParameteriv
-    sets:
-    GL_TEXTURE_MIN_FILTER to GL_NEAREST, GL_LINEAR, GL_NEAREST_MIPMAP_NEAREST, GL_LINEAR_MIPMAP_NEAREST, GL_NEAREST_MIPMAP_LINEAR or GL_LINEAR_MIPMAP_LINEAR
-    GL_TEXTURE_MAG_FILTER to GL_NEAREST, GL_LINEAR
-    GL_TEXTURE_WRAP_S (i.e. x) to GL_CLAMP_TO_EDGE, GL_MIRRORED_REPEAT, or GL_REPEAT
-    GL_TEXTURE_WRAP_T (i.e. y) to GL_CLAMP_TO_EDGE, GL_MIRRORED_REPEAT, or GL_REPEAT
-    
-
-glGetTexParameter , glIsTexture
-
+glCopyTexImage2D , glCopyTexSubImage2D 
 
 
 

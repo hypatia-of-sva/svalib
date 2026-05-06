@@ -6,6 +6,11 @@
 
 #ifndef GFX_H
 
+/* This macro creates print out for allocation, extra checking for buffer and texture bindings etc. */
+#ifndef NDEBUG
+#define GFX_DEBUG
+#endif
+
 /* TODO: differentiate between [0,1] and [-1,1] clamping with type names */
 typedef float  gfx_clamp_f;
 
@@ -19,7 +24,9 @@ typedef enum gfx_result_t {
     GFX_ERROR_CURSOR_NOT_AVAILABLE = -6,
     GFX_ERROR_INVALID_PARAM = -7,
     GFX_ERROR_OUT_OF_MEMORY = -8,
-    GFX_ERROR_UNKNOWN = -9,
+    GFX_ERROR_TEXTURE_TOO_BIG = -9,
+    GFX_ERROR_TEXTURE_NOT_POWER_OF_TWO_UNSUPPORTED = -10,
+    GFX_ERROR_UNKNOWN = -11,
 } gfx_result_t;
 typedef enum gfx_event_type_t {
     GFX_EVENT_MONITOR_CONNECTED = 0,
