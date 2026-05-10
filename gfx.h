@@ -1,6 +1,6 @@
 /** 
  * Graphics library abstraction
- * implemented in GL (ES) 2 and GLFW
+ * implemented in GL (ES) 2 and GLFW 3.4
  */
 
 
@@ -10,6 +10,16 @@
 #ifndef NDEBUG
 #define GFX_DEBUG
 #endif
+
+/* This macro turns off all checking, use carefully! You should also turn off GFX_DEBUG since that's not directly coupled */
+#if 0
+#define GFX_NO_CHECKS
+#endif
+
+#if 0
+#define GFX_NO_UNBIND
+#endif
+
 
 /* TODO: differentiate between [0,1] and [-1,1] clamping with type names */
 typedef float  gfx_clamp_f;
@@ -26,8 +36,15 @@ typedef enum gfx_result_t {
     GFX_ERROR_OUT_OF_MEMORY = -8,
     GFX_ERROR_TEXTURE_TOO_BIG = -9,
     GFX_ERROR_TEXTURE_NOT_POWER_OF_TWO_UNSUPPORTED = -10,
-    GFX_ERROR_OPERATION_INVALID = -11,
-    GFX_ERROR_UNKNOWN = -12,
+    GFX_ERROR_OPERATION_INVALID = -11,    
+    GFX_ERROR_SHADER_CREATE = -12,
+    GFX_ERROR_SHADER_COMPILATION_FAILED = -13,
+    GFX_ERROR_SHADER_PROGRAM_CREATE = -14,
+    GFX_ERROR_SHADER_PROGRAM_LINK = -15,
+    GFX_ERROR_SHADER_PROGRAM_VALIDATE = -16,
+    GFX_ERROR_UNKNOWN = -17,
+    
+    GFX_RESULT_MAX_ENUM = 0x7FFFFFFF,
 } gfx_result_t;
 typedef enum gfx_event_type_t {
     GFX_EVENT_MONITOR_CONNECTED = 0,
@@ -532,7 +549,12 @@ typedef struct gfx_cubemap_t {
     gfx_cubemap_config_t config;
     struct { gfx_cubemap_face_data_t positive_x, negative_x, positive_y, negative_y, positive_z, negative_z; } face_data;
 } gfx_cubemap_t;
-
+typedef struct gfx_screen_rect_t {
+    int x, y, width, height;
+} gfx_screen_rect_t;
+typedef struct gfx_shader_t {
+    uint32_t vertex_id, fragment_id, program_id;
+} shader_t;
 
 /* icon is optional and can be left NULL */
 gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window_icon_t* icon);
@@ -549,6 +571,9 @@ gfx_result_t gfx_events_done_processing(void);
 
 gfx_result_t gfx_clipboard_get(const char** string);
 gfx_result_t gfx_clipboard_set(const char* string);
+
+gfx_result_t gfx_timestamp_frequency(uint64_t* frequency_in_hz);
+gfx_result_t gfx_timestamp(uint64_t* ticks);
 
 gfx_result_t gfx_params_get(gfx_fixed_function_state_t* state);
 gfx_result_t gfx_params_set(gfx_fixed_function_state_t state);
@@ -573,7 +598,9 @@ gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer);
 
 
 gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture);
+gfx_result_t gfx_texture_create_from_screen(gfx_screen_rect_t rect, gfx_texture_image_data_format_t format. gfx_texture_config_t config, gfx_texture_t* texture);
 gfx_result_t gfx_texture_rewrite(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_texture_image_data_t data);
+gfx_result_t gfx_texture_rewrite_from_screen(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_screen_rect_t rect);
 gfx_result_t gfx_texture_destroy(gfx_texture_t texture);
 
 
@@ -582,9 +609,13 @@ gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_textur
                                 gfx_texture_image_data_t* y_pos_data, gfx_texture_image_data_t* y_neg_data,
                                 gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap);
 gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t face, gfx_texture_image_data_t data);
+gfx_result_t gfx_cubemap_add_face_from_screen(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t face, gfx_screen_rect_t rect, gfx_texture_image_data_format_t format);
 gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_texture_image_data_t data);
+gfx_result_t gfx_cubemap_rewrite_face_from_screen(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_screen_rect_t rect);
 gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
 
 
+gfx_result_t gfx_shader_create(const char* vertex_shader_source, const char* fragment_shader_source, gfx_shader_t* shader);
+gfx_result_t gfx_shader_destroy(gfx_shader_t shader);
 
 #endif

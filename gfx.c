@@ -138,11 +138,23 @@ gfx_monitor_info_t get_info_from_glfw_handle(GLFWmonitor* m) {
     
     info.connected = true;
     info.name = strdup(glfwGetMonitorName(m));
+#ifndef GFX_NO_CHECKS
+    assert(!glfwGetError(NULL));
+#endif
     glfwGetMonitorPhysicalSize(m, &(info.physical_size.width_in_mm), &(info.physical_size.height_in_mm));
+#ifndef GFX_NO_CHECKS
+    assert(!glfwGetError(NULL));
+#endif
     
     int mode_count;
     const GLFWvidmode* modes = glfwGetVideoModes(m, &mode_count);
+#ifndef GFX_NO_CHECKS
+    assert(!glfwGetError(NULL));
+#endif
     const GLFWvidmode* curr_mode = glfwGetVideoMode(m);
+#ifndef GFX_NO_CHECKS
+    assert(!glfwGetError(NULL));
+#endif
     bool found_mode = false;
     for(int i = 0; i < mode_count; i++) {
         if(modes[i] == curr_mode[0]) {
@@ -165,6 +177,9 @@ gfx_monitor_info_t get_info_from_glfw_handle(GLFWmonitor* m) {
 }
 void update_glfw_joystick_info(int jid) {
     if(glfwJoystickPresent(jid) == GLFW_TRUE) {
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         gfx_joystick_info_t* info = &g_glfw.joystick_infos[jid];
         
         info[0].connected    = true;        
@@ -174,19 +189,40 @@ void update_glfw_joystick_info(int jid) {
         info[0].pad_name     = info[0].is_gamepad ? strdup(glfwGetGamepadName(jid)) : NULL;
         
         (void) glfwGetJoystickButtons(jid, &(info[0].button_count));
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         (void) glfwGetJoystickHats(jid, &(info[0].hat_count));
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         (void) glfwGetJoystickAxes(jid, &(info[0].axis_count));
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
     }
 }
 void update_glfw_joystick_state(int jid) {
     if(g_glfw.joystick_infos[jid].connected) {
         int button_count, hat_count, axis_count;
         assert(glfwJoystickPresent(jid) == GLFW_TRUE);
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         
         g_glfw.joystick_states[jid].id = jid;
         g_glfw.joystick_states[jid].button_states = glfwGetJoystickButtons(jid, &button_count);
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         g_glfw.joystick_states[jid].hat_states = glfwGetJoystickHats(jid, &hat_count);
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         g_glfw.joystick_states[jid].axis_states = glfwGetJoystickAxes(jid, &axis_count);
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         
         gfx_event_t e;
         e.type = GFX_EVENT_JOYSTICK_STATE_UPDATE;
@@ -210,13 +246,22 @@ void update_glfw_joystick_state(int jid) {
 void update_glfw_gamepad_state(int jid) {
     if(g_glfw.joystick_infos[jid].connected && g_glfw.joystick_infos[jid].is_gamepad) {
         assert(glfwJoystickPresent(jid) == GLFW_TRUE);
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         assert(glfwJoystickIsGamepad(jid) == GLFW_TRUE);
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         
         g_glfw.gamepad_states[jid].id = jid;
         
         /* the rest of the struct is layed-out identically to GLFWgamepadstate, so we can just copy into it: */
         GLFWgamepadstate* ptr = (GLFWgamepadstate*) ((void*) &(g_glfw.gamepad_states[jid].A));
         glfwGetGamepadState(jid, ptr);
+#ifndef GFX_NO_CHECKS
+        assert(!glfwGetError(NULL));
+#endif
         
         gfx_event_t e;
         e.type = GFX_EVENT_GAMEPAD_STATE_UPDATE;
@@ -637,6 +682,7 @@ struct g_gl {
     PFNGLVIEWPORTPROC                   Viewport;
 } g_gl;
 void load_gl(void) {
+    /* We don't do error checking here since not available functions will just become NULL pointers */
     g_gl.ActiveTexture                  = (PFNGLACTIVETEXTUREPROC             ) glfwGetProcAddress("glActiveTexture");
     g_gl.AttachShader                   = (PFNGLBINDATTRIBLOCATIONPROC        ) glfwGetProcAddress("glAttachShader");
     g_gl.BindAttribLocation             = (PFNGLBINDATTRIBLOCATIONPROC        ) glfwGetProcAddress("glBindAttribLocation");
@@ -839,16 +885,71 @@ gfx_fixed_function_state_t default_state(int width, int height) {
 bool load_or_check_limits(void) {
     gfx_driver_limits_t limits;
     g_gl.GetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, &limits.line_width);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetFloatv(GL_MAX_VIEWPORT_DIMS, &limits.viewport_maximum);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, &limits.texture.maximum_usable_units.vertex);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &limits.texture.maximum_usable_units.fragment);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &limits.texture.maximum_usable_units.combined);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_MAX_TEXTURE_SIZE, &limits.texture.max_image_pixelbuffer_size.regular_2d);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_MAX_CUBE_MAP_TEXTURE_SIZE, &limits.texture.max_image_pixelbuffer_size.cube_map);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_MAX_VERTEX_ATTRIBS, &limits.max_vertex_attributes);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_SAMPLE_BUFFERS, &limits.sample_buffers);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_SAMPLES, &limits.sample_coverage_mask_size);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     g_gl.GetIntegerv(GL_SUBPIXEL_BITS, &limits.subpixel_bits);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return false;
+    }
+#endif
     
     if(g_gl.initialized) {
         return g_gl.limits == limits;
@@ -858,6 +959,7 @@ bool load_or_check_limits(void) {
     }
 }
 bool check_params(gfx_fixed_function_state_t state) {
+#ifndef GFX_NO_CHECKS
     /* TODO: Is there any way to request the current value of glFrontFace ? 
         also: is GL_SCISSOR_BOX or GL_VIEWPORT with integer an issue?
     */
@@ -1886,7 +1988,8 @@ bool check_params(gfx_fixed_function_state_t state) {
         default:
             return false;
     }
-    
+#endif
+
     return true;
 }
 
@@ -1908,6 +2011,11 @@ gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window
     allocator.deallocate = glfw_deallocate;
     allocator.user = NULL;
     glfwInitAllocator(allocator);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     glfwInitHint(GLFW_JOYSTICK_HAT_BUTTONS, GLFW_FALSE);
     if(glfwPlatformSupported(GLFW_PLATFORM_WIN32)) {
@@ -1932,21 +2040,32 @@ gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window
     if ( !glfwInit() ) {
         return GFX_ERROR_WINDOW;
     }
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_WINDOW;
     }
+#endif
         
     glfwSetMonitorCallback(glfw_monitor);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_WINDOW;
     }
+#endif
     
     glfwSetJoystickCallback(glfw_joystick);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_WINDOW;
     }
+#endif
     
     GLFWmonitor** glfw_allocated_monitor_array = glfwGetMonitors(&g_glfw.monitor_count);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     g_glfw.monitor_capacity = round_up_to_power_of_2(g_glfw.monitor_count);
     g_glfw.monitors = calloc(sizeof(GLFWmonitor*), g_glfw.monitor_capacity);
     memmove(g_glfw.monitors, glfw_allocated_monitor_array, sizeof(GLFWmonitor*)*g_glfw.monitor_count);
@@ -1963,27 +2082,101 @@ gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window
     
     /* use current settings of main monitor */
     const GLFWvidmode* mode = glfwGetVideoMode(chosen_monitor);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_RED_BITS,     mode[0].redBits);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_GREEN_BITS,   mode[0].greenBits);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_BLUE_BITS,    mode[0].blueBits);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_REFRESH_RATE, mode[0].refreshRate);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     /* center the window */
     glfwWindowHint(GLFW_POSITION_X , mode[0].width/2);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_POSITION_Y , mode[0].height/2);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_TRUE);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_NATIVE_CONTEXT_API);
-    
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     
     /* first test GL ES 2 */
     glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_FALSE);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     g_gl.version = GLES2;
     
     /* we _don't_ use chosen_monitor since we start in windowed mode */
@@ -2051,7 +2244,9 @@ gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window
         }
     }
     
+#ifndef GFX_NO_CHECKS
     assert(g_glfw.window != NULL);
+#endif
     
     g_glfw.paths_cap = g_glfw.num_paths = g_glfw.num_old_paths = 0;
     g_glfw.paths = g_glfw.old_paths = NULL;
@@ -2059,45 +2254,151 @@ gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window
     
     /* now to all the callbacks: */
     glfwSetWindowPosCallback(g_glfw.window, glfw_pos);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetWindowSizeCallback(g_glfw.window, glfw_size);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetWindowCloseCallback(g_glfw.window, glfw_close);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetWindowRefreshCallback(g_glfw.window, glfw_refresh);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetWindowFocusCallback(g_glfw.window, glfw_focus);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetWindowIconifyCallback(g_glfw.window, glfw_iconify);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetWindowMaximizeCallback(g_glfw.window, glfw_maximize);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetFramebufferSizeCallback(g_glfw.window, glfw_framebuffersize);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetWindowContentScaleCallback(g_glfw.window, glfw_contentscale);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetKeyCallback(g_glfw.window, glfw_key);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetCharCallback(g_glfw.window, glfw_char);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetMouseButtonCallback(g_glfw.window, glfw_mousebutton);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetCursorPosCallback(g_glfw.window, glfw_cursorpos);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetCursorEnterCallback(g_glfw.window, glfw_cursorenter);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetScrollCallback(g_glfw.window, glfw_scroll);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     glfwSetDropCallback(g_glfw.window, glfw_drop);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     /* Since this will only take effect when the cursor is deactivated, we will turn it on preemtively */
     if (glfwRawMouseMotionSupported()) {
+#ifndef GFX_NO_CHECKS
+        if(glfwGetError(NULL)) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
         glfwSetInputMode(_glfw.window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+#ifndef GFX_NO_CHECKS
+        if(glfwGetError(NULL)) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
     }
     
     glfwSetInputMode(_glfw.window, GLFW_LOCK_KEY_MODS, GLFW_TRUE);
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     glfwMakeContextCurrent(g_glfw.window);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_API_INIT_ERROR;
     }
+#endif
     
     load_gl();
-    assert(load_or_check_limits());
+    bool loaded_limits = load_or_check_limits();
+#ifndef GFX_NO_CHECKS
+    if(!loaded_limits) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     glfwSwapInterval(1);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_API_INIT_ERROR;
     }
+#endif
     
     /* calls glViewport and sets variables like glLineWidth to default values */
     gfx_result_t code = gfx_params_reset();
+#ifndef GFX_NO_CHECKS
     if(code != GFX_OK) return code;
+#endif
     
     if(icon != NULL) {
         glfwSetWindowIcon(g_glfw.window, icon[0].nr_icon_candidates, (const GLFWimage*) icon[0].per_icon_candidate_data);
@@ -2108,6 +2409,11 @@ gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window
 }
 gfx_result_t gfx_exit(void) {
     g_gl.Finish();
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     if(g_gl.screenshot.pixel_data != NULL) {
         free(g_gl.screenshot.pixel_data);
@@ -2128,9 +2434,11 @@ gfx_result_t gfx_exit(void) {
     }
     
     glfwTerminate();
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_WINDOW;
     }
+#endif
     
     destroy_event_queue();
     
@@ -2170,9 +2478,11 @@ gfx_result_t gfx_monitor_switch(int monitor_id, gfx_video_mode_t mode, bool full
     int fb_width, fb_height;
     glfwGetFramebufferSize(g_glfw.window, &fb_width, &fb_height);
     g_gl.Viewport(0, 0, fb_width, fb_height);
+#ifndef GFX_NO_CHECKS
     if(gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_API_INIT_ERROR;
     }
+#endif
     g_gl.state.viewport.x = 0;
     g_gl.state.viewport.y = 0;
     g_gl.state.viewport.width = fb_width;
@@ -2225,21 +2535,25 @@ gfx_result_t gfx_cursor_change(gfx_cursor_shape_t shape, gfx_cursor_mode_t mode)
                 shape = GLFW_NOT_ALLOWED_CURSOR;
                 break
             default:
-                assert(false);
+                return GFX_ERROR_INVALID_PARAM;
         }
         g_glfw.used_cursor = glfwCreateStandardCursor(shape);
     } else {
         g_glfw.used_cursor = glfwCreateCursor((GLFWimage*) &(shape.data.custom_shape_data.image_data),
             shape.data.custom_shape_data.xhotspot, shape.data.custom_shape_data.yhotspot);
     }
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL) || g_glfw.used_cursor == NULL) {
         return GFX_ERROR_CURSOR_NOT_AVAILABLE;
     }
+#endif
     
     glfwSetCursor(g_glfw.window, g_glfw.used_cursor);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL) || g_glfw.used_cursor == NULL) {
         return GFX_ERROR_WINDOW;
     }
+#endif
     
     int value;
     switch(mode) {
@@ -2256,12 +2570,14 @@ gfx_result_t gfx_cursor_change(gfx_cursor_shape_t shape, gfx_cursor_mode_t mode)
             value = GLFW_CURSOR_CAPTURED;
             break;
         default:
-            assert(false);
+            return GFX_ERROR_INVALID_PARAM;
     }
     glfwSetInputMode(g_glfw.window, GLFW_CURSOR, value);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL) || g_glfw.used_cursor == NULL) {
         return GFX_ERROR_WINDOW;
     }
+#endif
     
     return GFX_OK;
 }
@@ -2308,41 +2624,71 @@ gfx_result_t gfx_events_done_processing(void) {
 gfx_result_t gfx_clipboard_get(const char** string) {
     assert(string != NULL);
     string[0] = glfwGetClipboardString(g_glfw.window);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_WINDOW;
     }
+#endif
     return GFX_OK;
 }
 gfx_result_t gfx_clipboard_set(const char* string) {
     glfwSetClipboardString(g_glfw.window, string);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_WINDOW;
     }
+#endif
     return GFX_OK;
 }
 
-/*
-gfx_result_t gfx_time(uint64_t* ticks, uint64_t* frequency_in_hz) {
-    assert(ticks != NULL && frequency_in_hz != 0);
-    ticks[0] = glfwGetTimerValue();
+
+
+
+
+
+gfx_result_t gfx_timestamp_frequency(uint64_t* frequency_in_hz) {
+    uint64_t val
+#ifndef GFX_NO_CHECKS
+    if(frequency_in_hz == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+    val = glfwGetTimerFrequency();
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_WINDOW;
     }
-    frequency_in_hz[0] = glfwGetTimerFrequency();
-    if(glfwGetError(NULL)) {
-        return GFX_ERROR_WINDOW;
-    }
+#endif
+    frequency_in_hz[0] = val;
     return GFX_OK;
 }
-*/
+gfx_result_t gfx_timestamp(uint64_t* ticks) {
+    uint64_t val
+#ifndef GFX_NO_CHECKS
+    if(ticks == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+    val = glfwGetTimerValue();
+#ifndef GFX_NO_CHECKS
+    if(glfwGetError(NULL)) {
+        return GFX_ERROR_WINDOW;
+    }
+#endif
+    ticks[0] = val;
+    return GFX_OK;
+}
+
 
 
 gfx_result_t gfx_params_get(gfx_fixed_function_state_t* state) {
     assert(state != NULL);
     
+#ifndef GFX_NO_CHECKS
     if(!load_or_check_limits() || !check_params(g_gl.state)) {
         return GFX_ERROR_API_OTHER;
     }
+#endif
     
     state[0] = g_gl.state;
     return GFX_OK;
@@ -2350,25 +2696,31 @@ gfx_result_t gfx_params_get(gfx_fixed_function_state_t* state) {
 gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
     bool set_all = !g_gl.initialized;
     
+#ifndef GFX_NO_CHECKS
     if(!set_all) {
         if(!load_or_check_limits() || !check_params(g_gl.state)) {
             return GFX_ERROR_API_OTHER;
         }
     }
+#endif
     
     if(set_all || state.blend.enabled != g_gl.state.blend.enabled) {
         if(state.blend.enabled == true) {
             g_gl.Enable(GL_BLEND);
         } else if (state.blend.enabled == false) {
             g_gl.Disable(GL_BLEND);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.blend.color != g_gl.state.blend.color) {
+#ifndef GFX_NO_CHECKS
         if(state.blend.color.r < 0.0f || state.blend.color.r > 1.0f) {
             return GFX_ERROR_INVALID_PARAM;
         }
@@ -2381,10 +2733,13 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
         if(state.blend.color.a < 0.0f || state.blend.color.a > 1.0f) {
             return GFX_ERROR_INVALID_PARAM;
         }
+#endif
         g_gl.BlendColor(state.blend.color.r, state.blend.color.g, state.blend.color.b, state.blend.color.a);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.blend.rgb_equation != g_gl.state.blend.rgb_equation
                || state.blend.alpha_equation != g_gl.state.blend.alpha_equation) {
@@ -2416,9 +2771,11 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.BlendEquationSeparate(modeRGB, modeAlpha);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.blend.src_rgb != g_gl.state.blend.src_rgb
                || state.blend.src_alpha != g_gl.state.blend.src_alpha
@@ -2616,11 +2973,14 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.BlendFuncSeparate(src_rgb, dst_rgb, src_alpha, dst_alpha);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.clear.color != g_gl.state.clear.color) {
+#ifndef GFX_NO_CHECKS
         if(state.clear.color.r < 0.0f || state.clear.color.r > 1.0f) {
             return GFX_ERROR_INVALID_PARAM;
         }
@@ -2633,29 +2993,38 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
         if(state.clear.color.a < 0.0f || state.clear.color.a > 1.0f) {
             return GFX_ERROR_INVALID_PARAM;
         }
+#endif
         g_gl.ClearColor(state.clear.color.r, state.clear.color.g, state.clear.color.b, state.clear.color.a);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.clear.depth_value != g_gl.state.clear.depth_value) {
+#ifndef GFX_NO_CHECKS
         if(state.clear.depth_value < 0.0f || state.clear.depth_value > 1.0f) {
             return GFX_ERROR_INVALID_PARAM;
         }
+#endif
         if(g_gl.version == GLES2) {
             g_gl.ClearDepthf(state.clear.depth_value);
         } else {
             g_gl.ClearDepth(state.clear.depth_value);
         }
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.clear.stencil_index != g_gl.state.clear.stencil_index) {
         g_gl.ClearStencil(state.clear.stencil_index);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.mask.color != g_gl.state.mask.color) {
         GLboolean r,g,b,a;
@@ -2700,9 +3069,11 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.ColorMask(r,g,b,a);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.mask.depth != g_gl.state.mask.depth) {
         GLboolean flag;
@@ -2717,21 +3088,26 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.DepthMask(flag);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.cull.enabled != g_gl.state.cull.enabled) {
         if(state.cull.enabled == true) {
             g_gl.Enable(GL_CULL_FACE);
         } else if (state.cull.enabled == false) {
             g_gl.Disable(GL_CULL_FACE);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.cull.front_face_orientation != g_gl.state.cull.front_face_orientation) {
         GLenum mode;
@@ -2746,9 +3122,11 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.FrontFace(mode);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.cull.which_face != g_gl.state.cull.which_face) {
         GLenum mode;
@@ -2766,21 +3144,26 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.CullFace(mode);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.depth.test_enabled != g_gl.state.depth.test_enabled) {
         if(state.depth.test_enabled == true) {
             g_gl.Enable(GL_DEPTH_TEST);
         } else if (state.depth.test_enabled == false) {
             g_gl.Disable(GL_DEPTH_TEST);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.depth.comparison_function != g_gl.state.depth.comparison_function) {
         GLenum func;
@@ -2813,82 +3196,103 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
             return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.DepthFunc(func);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.depth.range != g_gl.state.depth.range) {
+#ifndef GFX_NO_CHECKS
         if(state.depth.range.near < 0.0f || state.depth.range.near > 1.0f) {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(state.depth.range.far < 0.0f || state.depth.range.far > 1.0f) {
             return GFX_ERROR_INVALID_PARAM;
         }
+#endif
         if(g_gl.version == GLES2) {
             g_gl.DepthRangef(state.depth.range.near, state.depth.range.far);
         } else {
-            g_gl.DepthRange(state.clear.depth_value);
+            g_gl.DepthRange(state.depth.range.near, state.depth.range.far);
         }
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.polygon_offset.fill_enabled != g_gl.state.polygon_offset.fill_enabled) {
         if(state.polygon_offset.fill_enabled == true) {
             g_gl.Enable(GL_POLYGON_OFFSET_FILL);
         } else if (state.polygon_offset.fill_enabled == false) {
             g_gl.Disable(GL_POLYGON_OFFSET_FILL);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.polygon_offset.scale_factor != g_gl.state.polygon_offset.scale_factor
         || state.polygon_offset.units != g_gl.state.polygon_offset.units) {
         g_gl.PolygonOffset(state.polygon_offset.scale_factor, state.polygon_offset.units);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.scissor.enabled != g_gl.state.scissor.enabled) {
         if(state.scissor.enabled == true) {
             g_gl.Enable(GL_SCISSOR_TEST);
         } else if (state.scissor.enabled == false) {
             g_gl.Disable(GL_SCISSOR_TEST);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.scissor.x != g_gl.state.scissor.x
                || state.scissor.y != g_gl.state.scissor.y
                || state.scissor.width != g_gl.state.scissor.width
                || state.scissor.height != g_gl.state.scissor.height) {
+#ifndef GFX_NO_CHECKS
         if(state.scissor.x < 0 || state.scissor.y < 0 || state.scissor.width < 0 || state.scissor.height < 0) {
             return GFX_ERROR_INVALID_PARAM;
         }
+#endif
         
         /* also check viewport size? */
         g_gl.Scissor(state.scissor.x, state.scissor.y, state.scissor.width, state.scissor.height);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.stencil.test_enabled != g_gl.state.stencil.test_enabled) {
         if(state.stencil.test_enabled == true) {
             g_gl.Enable(GL_STENCIL_TEST);
         } else if (state.stencil.test_enabled == false) {
             g_gl.Disable(GL_STENCIL_TEST);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.stencil.front_face.comparison_function != g_gl.state.stencil.front_face.comparison_function
          || state.stencil.front_face.reference_value != g_gl.state.stencil.front_face.reference_value
@@ -2923,9 +3327,11 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
             return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.StencilFuncSeparate(GL_FRONT,func,state.stencil.front_face.reference_value, state.stencil.front_face.compare_mask);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.stencil.back_face.comparison_function != g_gl.state.stencil.back_face.comparison_function
          || state.stencil.back_face.reference_value != g_gl.state.stencil.back_face.reference_value
@@ -2960,21 +3366,27 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
             return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.StencilFuncSeparate(GL_BACK,func,state.stencil.back_face.reference_value, state.stencil.back_face.compare_mask);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.stencil.front_face.write_mask != g_gl.state.stencil.front_face.write_mask) {
         g_gl.StencilMaskSeparate(GL_FRONT, state.stencil.front_face.write_mask);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.stencil.back_face.write_mask != g_gl.state.stencil.back_face.write_mask) {
         g_gl.StencilMaskSeparate(GL_BACK, state.stencil.back_face.write_mask);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.stencil.front_face.if_stencil_fails != g_gl.state.stencil.front_face.if_stencil_fails
          || state.stencil.front_face.if_stencil_passes_and_depth_fails != g_gl.state.stencil.front_face.if_stencil_passes_and_depth_fails
@@ -3065,9 +3477,11 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.StencilOpSeparate(GL_FRONT,sfail,dpfail,dppass);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.stencil.back_face.if_stencil_fails != g_gl.state.stencil.back_face.if_stencil_fails
          || state.stencil.back_face.if_stencil_passes_and_depth_fails != g_gl.state.stencil.back_face.if_stencil_passes_and_depth_fails
@@ -3158,9 +3572,11 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.StencilOpSeparate(GL_BACK,sfail,dpfail,dppass);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.pixel_storage.pack_alignment != g_gl.state.pixel_storage.pack_alignment) {
         GLint param;
@@ -3181,9 +3597,11 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.PixelStorei(GL_PACK_ALIGNMENT, param);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.pixel_storage.unpack_alignment != g_gl.state.pixel_storage.unpack_alignment) {
         GLint param;
@@ -3204,33 +3622,41 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
                 return GFX_ERROR_INVALID_PARAM;
         }
         g_gl.PixelStorei(GL_UNPACK_ALIGNMENT, param);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.sample_coverage.enabled != g_gl.state.sample_coverage.enabled) {
         if(state.sample_coverage.enabled == true) {
             g_gl.Enable(GL_SAMPLE_COVERAGE);
         } else if (state.sample_coverage.enabled == false) {
             g_gl.Disable(GL_SAMPLE_COVERAGE);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.sample_coverage.convert_alpha_to_coverage_value != g_gl.state.sample_coverage.convert_alpha_to_coverage_value) {
         if(state.sample_coverage.convert_alpha_to_coverage_value == true) {
             g_gl.Enable(GL_SAMPLE_ALPHA_TO_COVERAGE);
         } else if (state.sample_coverage.convert_alpha_to_coverage_value == false) {
             g_gl.Disable(GL_SAMPLE_ALPHA_TO_COVERAGE);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.sample_coverage.invert_coverage_mask != g_gl.state.sample_coverage.invert_coverage_mask
              || state.sample_coverage.coverage_value != g_gl.state.sample_coverage.coverage_value) {
@@ -3242,59 +3668,76 @@ gfx_result_t gfx_params_set(gfx_fixed_function_state_t state) {
         } else {
             return GFX_ERROR_INVALID_PARAM;
         }
+#ifndef GFX_NO_CHECKS
         if(state.sample_coverage.coverage_value < 0.0f || state.sample_coverage.coverage_value > 1.0f) {
             return GFX_ERROR_INVALID_PARAM;
         }
+#endif
         g_gl.SampleCoverage(state.sample_coverage.coverage_value, invert);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.dithering_enabled != g_gl.state.dithering_enabled) {
         if(state.dithering_enabled == true) {
             g_gl.Enable(GL_DITHER);
         } else if (state.dithering_enabled == false) {
             g_gl.Disable(GL_DITHER);
-        } else {
+        }
+#ifndef GFX_NO_CHECKS
+        else {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.line_width != g_gl.state.line_width) {
+#ifndef GFX_NO_CHECKS
         if(state.line_width <= 0) {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(state.line_width < g_gl.limits.line_width.min || state.line_width > g_gl.limits.line_width.max) {
             return GFX_ERROR_INVALID_PARAM;
         }
+#endif
         g_gl.LineWidth(state.line_width);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     if(set_all || state.viewport != g_gl.state.viewport) {
+#ifndef GFX_NO_CHECKS
         if(state.viewport.x < 0 || state.viewport.y < 0 || state.viewport.width < 0 || state.viewport.height < 0) {
             return GFX_ERROR_INVALID_PARAM;
         }
         if(state.viewport.x + state.viewport.width > limits.viewport_maximum.x || state.viewport.y + state.viewport.height > limits.viewport_maximum.y) {
             return GFX_ERROR_INVALID_PARAM;
         }
+#endif
         g_gl.Viewport(state.viewport.x, state.viewport.y, state.viewport.width, state.viewport.height);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return set_all ? GFX_ERROR_API_INIT_ERROR : GFX_ERROR_API_UPDATE_ERROR;
         }
+#endif
         /* (re)set screenshot buffer for gfx_screenshot */
         g_gl.screenshot.width = g_gl.state.viewport.width;
         g_gl.screenshot.height = g_gl.state.viewport.height;
         g_gl.screenshot.pixel_data = realloc(g_gl.screenshot.pixel_data, sizeof(uint32_t)*g_gl.screenshot.width*g_gl.screenshot.height);
     }
 
+#ifndef GFX_NO_CHECKS
     /* check if we actually could update the state */
     if(!load_or_check_limits() || !check_params(state)) {
         return GFX_ERROR_API_OTHER;
     }
+#endif
     
     g_gl.state = state;
     g_gl.initialized = true;
@@ -3306,13 +3749,19 @@ gfx_result_t gfx_params_reset(void) {
     return gfx_params_set(default_state(fb_width, fb_height));
 }
 
+
+
+
+
 gfx_result_t gfx_render(void) {
     g_gl.Flush(); /* This might be unnecessary but we keep it in just in case */
     
     glfwSwapBuffers(g_glfw.window);
+#ifndef GFX_NO_CHECKS
     if(glfwGetError(NULL)) {
         return GFX_ERROR_API_OTHER;
     }
+#endif
     
     return GFX_OK;
 }
@@ -3329,31 +3778,39 @@ gfx_result_t gfx_clear(void) {
         mask |= GL_STENCIL_BUFFER_BIT;
     }
     g_gl.Clear(mask);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
     return GFX_OK;
 }
 
 
 gfx_result_t gfx_screenshot(gfx_image_data_rgba_t* img) {
-    assert(img != NULL);+
+#ifndef GFX_NO_CHECKS
+    assert(img != NULL);
+#endif
     /* we are limited to RGBA32 bc GL ES 2 only has this and non-standard formats
        we only do full screenshots since users need to copy out the data anyway,
        and this way we can maintain an internal buffer with minimal reallocing
     */
     g_gl.ReadPixels(g_gl.state.viewport.x, g_gl.state.viewport.y, g_gl.screenshot.width, g_gl.screenshot.width, GL_RGBA, GL_UNSIGNED_BYTE, (void*) g_gl.screenshot.pixel_data);
     img[0] = g_gl.screenshot;
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
     return GFX_OK;
 }
 
 gfx_result_t gfx_driver_limits(const gfx_driver_limits_t** limits) {
+#ifndef GFX_NO_CHECKS
     assert(limits != NULL);
+#endif
     limits[0] = &(g_gl.limits);
     
     if(!load_or_check_limits()) {
@@ -3362,6 +3819,10 @@ gfx_result_t gfx_driver_limits(const gfx_driver_limits_t** limits) {
     
     return GFX_OK;
 }
+
+
+
+
 
 
 typedef enum gfx_internal_buffer_type_t {
@@ -3396,9 +3857,11 @@ static gfx_result_t gfx_buffer_bind_safe(GLenum target, GLuint old_id, GLuint ne
 #endif
 
     g_gl.BindBuffer(target, new_id);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
 
 #ifdef GFX_DEBUG
     g_gl.GetIntegerv(targetinfo, &i);
@@ -3413,7 +3876,9 @@ static gfx_result_t gfx_buffer_bind_safe(GLenum target, GLuint old_id, GLuint ne
     return GFX_OK;
 }
 static gfx_result_t gfx_buffer_create_generic(gfx_internal_buffer_type_t type, gfx_buffer_usage_t usage, size_t size, void* ptr, GLuint* id) {
+#ifndef GFX_NO_CHECKS
     assert(ptr != NULL && size > 0);
+#endif
     
     GLenum target, usage_pattern;
     GLuint id;
@@ -3445,14 +3910,19 @@ static gfx_result_t gfx_buffer_create_generic(gfx_internal_buffer_type_t type, g
     
     
     g_gl.GenBuffers(1, &id);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
 
     r = gfx_buffer_bind_safe(target, 0, id);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
 
     g_gl.BufferData(target, size, ptr, usage_pattern);
+#ifndef GFX_NO_CHECKS
     switch(g_gl.GetError()) {
         case GL_NO_ERROR:
             break;
@@ -3463,9 +3933,12 @@ static gfx_result_t gfx_buffer_create_generic(gfx_internal_buffer_type_t type, g
             g_gl.BindBuffer(target, 0);
             return GFX_ERROR_UNKNOWN;
     }
+#endif
 
     r = gfx_buffer_bind_safe(target, id, 0);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
     return GFX_OK;
 }
@@ -3486,6 +3959,7 @@ static gfx_result_t gfx_buffer_rewrite_generic(gfx_internal_buffer_type_t type, 
             return GFX_ERROR_INVALID_PARAM;
     }
     
+#ifndef GFX_NO_CHECKS
     if(offset+size > init_size
             || init_usage != GFX_BUFFER_USAGE_MUTABLE
             || g_gl.IsBuffer(id) != GL_TRUE) {
@@ -3494,10 +3968,12 @@ static gfx_result_t gfx_buffer_rewrite_generic(gfx_internal_buffer_type_t type, 
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
-    
+#endif
 
     r = gfx_buffer_bind_safe(target, 0, id);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
 #ifdef GFX_DEBUG
     g_gl.GetBufferParameteriv(target, GL_BUFFER_SIZE, &i);
@@ -3514,28 +3990,35 @@ static gfx_result_t gfx_buffer_rewrite_generic(gfx_internal_buffer_type_t type, 
 #endif
     
     g_gl.BufferSubData(target, offset, size, ptr);
-    if(i != GL_DYNAMIC_DRAW) {
-        g_gl.BindBuffer(target, 0);
-        return GFX_ERROR_API_OTHER;
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
     }
+#endif
 
     r = gfx_buffer_bind_safe(target, id, 0);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
     return GFX_OK;
 }
 static gfx_result_t gfx_buffer_destroy_generic(GLuint id) {
+#ifndef GFX_NO_CHECKS
     if(g_gl.IsBuffer(id) != GL_TRUE) {
         return GFX_ERROR_INVALID_PARAM;
     }
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
     g_gl.DeleteBuffers(1, &id);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
     return GFX_OK;
 }
@@ -3569,6 +4052,8 @@ gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer) {
 
 
 
+
+
 static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GLuint old_id, GLuint new_id) {
     GLenum targetinfo, e;
     GLuint i;
@@ -3585,9 +4070,11 @@ static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GL
 
 
     g_gl.ActiveTexture(texture_unit);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
 
 #ifdef GFX_DEBUG
     g_gl.GetIntegerv(GL_ACTIVE_TEXTURE, &e);
@@ -3608,9 +4095,11 @@ static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GL
 #endif
 
     g_gl.BindTexture(target, new_id);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
 
 #ifdef GFX_DEBUG
     g_gl.GetIntegerv(targetinfo, &i);
@@ -3644,6 +4133,7 @@ static gfx_result_t gfx_texture_image_safe(GLenum image_target, gfx_texture_imag
     }
 
 
+#ifndef GFX_NO_CHECKS
     int max_2d_size = g_gl.limits.texture.max_image_pixelbuffer_size.regular_2d;
     int max_cube_size = g_gl.limits.texture.max_image_pixelbuffer_size.cube_map;
     switch(image_target) {
@@ -3671,22 +4161,88 @@ static gfx_result_t gfx_texture_image_safe(GLenum image_target, gfx_texture_imag
     default:
         return GFX_ERROR_INVALID_PARAM;
     }
+#endif
 
     g_gl.TexImage2D(image_target, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, ptr);
+#ifndef GFX_NO_CHECKS
     switch(g_gl.GetError()) {
     case GL_NO_ERROR:
         break;
     case GL_INVALID_VALUE:
         /* This is the only case that generates this error code that we did not exclude already */
-        return GFX_ERROR_TEXTURE_NOT_POWER_OF_TWO_UNSUPPORTED;
+        if(!is_power_of_two(width) ||!is_power_of_two(height))
+            return GFX_ERROR_TEXTURE_NOT_POWER_OF_TWO_UNSUPPORTED;
+        else return GFX_ERROR_UNKNOWN;
     default:
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
     if(dimensions_out != NULL) {
         dimensions_out[0].width = width;
         dimensions_out[0].height = height;
     }
+    
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_copy_image_safe(GLenum image_target, gfx_screen_rect_t rect, gfx_texture_image_data_format_t format) {
+    GLenum format;
+    switch(format) {
+    case GFX_TEXTURE_IMAGE_DATA_FORMAT_RGBA:
+        format = GL_RGBA;
+        break;
+    case GFX_TEXTURE_IMAGE_DATA_FORMAT_RGB:
+        format = GL_RGB;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+
+
+#ifndef GFX_NO_CHECKS
+    int max_2d_size = g_gl.limits.texture.max_image_pixelbuffer_size.regular_2d;
+    int max_cube_size = g_gl.limits.texture.max_image_pixelbuffer_size.cube_map;
+    switch(image_target) {
+    case GL_TEXTURE_2D:
+        if(rect.width < 0 || rect.height < 0) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+        if(rect.width > max_2d_size || rect.height > max_2d_size) {
+            return GFX_ERROR_TEXTURE_TOO_BIG;
+        }
+        break;
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
+        if(rect.width < 0 || rect.height < 0 || rect.width != rect.height) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+        if(rect.width > max_cube_size || rect.height > max_cube_size) {
+            return GFX_ERROR_TEXTURE_TOO_BIG;
+        }
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_gl.CopyTexImage2D(image_target, 0, format, rect.x, rect.y, rect.width, rect.height, 0);
+#ifndef GFX_NO_CHECKS
+    switch(g_gl.GetError()) {
+    case GL_NO_ERROR:
+        break;
+    case GL_INVALID_VALUE:
+        /* This is the only case that generates this error code that we did not exclude already */
+        if(!is_power_of_two(width) ||!is_power_of_two(height))
+            return GFX_ERROR_TEXTURE_NOT_POWER_OF_TWO_UNSUPPORTED;
+        else return GFX_ERROR_UNKNOWN;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     return GFX_OK;
 }
@@ -3709,6 +4265,7 @@ static gfx_result_t gfx_texture_subimage_safe(GLenum image_target, gfx_texture_i
         return GFX_ERROR_INVALID_PARAM;
     }
     
+#ifndef GFX_NO_CHECKS
     if(width < 0 || height < 0 || offset_rect.width < 0 || offset_rect.height < 0 ||
         width + offset_rect.width > creation_size.width || height + offset_rect.height > creation_size.height) {
         return GFX_ERROR_INVALID_PARAM;
@@ -3727,11 +4284,45 @@ static gfx_result_t gfx_texture_subimage_safe(GLenum image_target, gfx_texture_i
     default:
         return GFX_ERROR_INVALID_PARAM;
     }
+#endif
 
     g_gl.TexSubImage2D(image_target, 0, offset_rect.width, offset_rect.height, width, height, format, GL_UNSIGNED_BYTE, ptr);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
+    
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_copy_subimage_safe(GLenum image_target, gfx_screen_rect_t rect, gfx_texture_dimensions_t offset_rect, gfx_texture_dimensions_t creation_size) {
+#ifndef GFX_NO_CHECKS
+    if(rect.width < 0 || rect.height < 0 || offset_rect.width < 0 || offset_rect.height < 0 ||
+        rect.width + offset_rect.width > creation_size.width || rect.height + offset_rect.height > creation_size.height) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+    switch(image_target) {
+    case GL_TEXTURE_2D:
+        break;
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
+    case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
+    case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_gl.CopyTexSubImage2D(image_target, 0, offset_rect.width, offset_rect.height, rect.x, rect.y, rect.width, rect.height);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     
     return GFX_OK;
 }
@@ -3749,9 +4340,11 @@ static gfx_result_t gfx_texture_set_zooming_modes(GLenum image_target, gfx_textu
         return GFX_ERROR_INVALID_PARAM;
     }
     g_gl.TexParameteri(image_target, GL_TEXTURE_MAG_FILTER, mag_filter);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
     switch(minifying_mode) {
     case GFX_TEXTURE_ZOOMING_OUT_MODE_NEAREST_ELEMENT:
@@ -3776,13 +4369,16 @@ static gfx_result_t gfx_texture_set_zooming_modes(GLenum image_target, gfx_textu
         return GFX_ERROR_INVALID_PARAM;
     }
     g_gl.TexParameteri(image_target, GL_TEXTURE_MIN_FILTER, min_filter);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
     return GFX_OK;
 }
 static gfx_result_t gfx_texture_check_zooming_modes(GLenum image_target, gfx_texture_zooming_in_mode_t magnifying_mode, gfx_texture_zooming_out_mode_t minifying_mode) {
+#ifndef GFX_NO_CHECKS
     GLint i;
     glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, &i);
     if(g_gl.GetError() != GL_NO_ERROR) {
@@ -3833,67 +4429,14 @@ static gfx_result_t gfx_texture_check_zooming_modes(GLenum image_target, gfx_tex
     default:
         return GFX_ERROR_UNKNOWN;
     }
-    
-    return GFX_OK;
-}
-static gfx_result_t gfx_texture_destroy_generic(GLuint id) {
-    if(g_gl.IsTexture(id) != GL_TRUE) {
-        return GFX_ERROR_INVALID_PARAM;
-    }
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    
-    g_gl.glDeleteTextures(1, &id);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    
-    return GFX_OK;
-}
+#endif
 
-gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture) {
-    GLuint id, i;
-    gfx_result_t r;
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_set_wrapping_modes(GLenum image_target, gfx_texture_wrapping_mode_t horizontal_wrap, gfx_texture_wrapping_mode_t vertical_wrap) {
     GLenum wrap_s, wrap_t;
-    gfx_texture_dimensions_t dim;
     
-    if(texture == NULL) {
-        return GFX_ERROR_INVALID_PARAM;
-    }
-
-    g_gl.GenTextures(1, &id);
-    if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
-        return GFX_ERROR_UNKNOWN;
-    }
-
-    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, 0, id);
-    if(r != GFX_OK) { return r; }
-
-
-    /* GL 2.1 mipmap generation hint: */
-    if(g_gl.version == GL2) {
-        g_gl.TexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
-        if(g_gl.GetError() != GL_NO_ERROR) {
-            return GFX_ERROR_UNKNOWN;
-        }
-    }
-
-    r = gfx_texture_image_safe(GL_TEXTURE_2D, data, &dim);
-    if(r != GFX_OK) { return r; }
-
-    /* GL 3+ and GL ES 2 mipmap generation: */
-    if(g_gl.version == GLES2 || g_gl.version == GL3Core) {
-        g_gl.GenerateMipmap(GL_TEXTURE_2D);
-        if(g_gl.GetError() != GL_NO_ERROR) {
-            return GFX_ERROR_UNKNOWN;
-        }
-    }
-    
-    r = gfx_texture_set_zooming_modes(GL_TEXTURE_2D, config.magnifying_mode, config.minifying_mode);
-    if(r != GFX_OK) { return r; }
-    
-    switch(config.horizonatal_wrap) {
+    switch(horizonatal_wrap) {
     case GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE:
         wrap_s = GL_CLAMP_TO_EDGE;
         break;
@@ -3906,12 +4449,14 @@ gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_confi
     default:
         return GFX_ERROR_INVALID_PARAM;
     }
-    g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrap_s);
+    g_gl.TexParameteri(image_target, GL_TEXTURE_WRAP_S, wrap_s);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
-    switch(config.vertical_wrap) {
+    switch(vertical_wrap) {
     case GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE:
         wrap_t = GL_CLAMP_TO_EDGE;
         break;
@@ -3924,13 +4469,147 @@ gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_confi
     default:
         return GFX_ERROR_INVALID_PARAM;
     }
-    g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrap_t);
+    g_gl.TexParameteri(image_target, GL_TEXTURE_WRAP_T, wrap_t);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
+    
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_check_wrapping_modes(GLenum image_target, gfx_texture_wrapping_mode_t horizontal_wrap, gfx_texture_wrapping_mode_t vertical_wrap) {
+#ifndef GFX_NO_CHECKS
+    GLint i;
+    
+    glGetTexParameteriv(image_target, GL_TEXTURE_WRAP_S, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    switch(i) {
+    case GL_CLAMP_TO_EDGE:
+        if(horizontal_wrap != GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_REPEAT:
+        if(horizontal_wrap != GFX_TEXTURE_WRAPPING_MODE_REPEAT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_MIRRORED_REPEAT:
+        if(horizontal_wrap != GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    glGetTexParameteriv(image_target, GL_TEXTURE_WRAP_T, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    switch(i) {
+    case GL_CLAMP_TO_EDGE:
+        if(vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_REPEAT:
+        if(vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_REPEAT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    case GL_MIRRORED_REPEAT:
+        if(vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT)
+            return GFX_ERROR_INVALID_PARAM;
+        break;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    
+    return GFX_OK;
+}
+static gfx_result_t gfx_texture_destroy_generic(GLuint id) {
+#ifndef GFX_NO_CHECKS
+    if(g_gl.IsTexture(id) != GL_TRUE) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    
+#ifndef GFX_NO_CHECKS
+    g_gl.DeleteTextures(1, &id);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    
+    return GFX_OK;
+}
+
+gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture) {
+    GLuint id, i;
+    gfx_result_t r;
+    gfx_texture_dimensions_t dim;
+    
+#ifndef GFX_NO_CHECKS
+    if(texture == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_gl.GenTextures(1, &id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, 0, id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+    /* For the different mipmap generation hints see https://www.khronos.org/opengl/wiki/Common_Mistakes#Automatic_mipmap_generation */
+    /* GL 2.1 mipmap generation hint: */
+    if(g_gl.version == GL2) {
+        g_gl.TexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+    }
+
+    r = gfx_texture_image_safe(GL_TEXTURE_2D, data, &dim);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+    /* GL 3+ and GL ES 2 mipmap generation: */
+    if(g_gl.version == GLES2 || g_gl.version == GL3Core) {
+        g_gl.GenerateMipmap(GL_TEXTURE_2D);
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+    }
+    
+    r = gfx_texture_set_zooming_modes(GL_TEXTURE_2D, config.magnifying_mode, config.minifying_mode);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    r = gfx_texture_set_wrapping_modes(GL_TEXTURE_2D, config.horizontal_wrap, config.vertical_wrap);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
     
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
     texture[0].id = id;
     texture[0].format = data.format;
@@ -3939,71 +4618,139 @@ gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_confi
 
     return GFX_OK;
 }
+gfx_result_t gfx_texture_create_from_screen(gfx_screen_rect_t rect, gfx_texture_image_data_format_t format. gfx_texture_config_t config, gfx_texture_t* texture) {
+    GLuint id, i;
+    gfx_result_t r;
+    gfx_texture_dimensions_t dim;
+    
+#ifndef GFX_NO_CHECKS
+    if(texture == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_gl.GenTextures(1, &id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, 0, id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+
+    /* GL 2.1 mipmap generation hint: */
+    if(g_gl.version == GL2) {
+        g_gl.TexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+    }
+
+    r = gfx_texture_copy_image_safe(GL_TEXTURE_2D, rect, format);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+    /* GL 3+ and GL ES 2 mipmap generation: */
+    if(g_gl.version == GLES2 || g_gl.version == GL3Core) {
+        g_gl.GenerateMipmap(GL_TEXTURE_2D);
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+    }
+    
+    r = gfx_texture_set_zooming_modes(GL_TEXTURE_2D, config.magnifying_mode, config.minifying_mode);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    r = gfx_texture_set_wrapping_modes(GL_TEXTURE_2D, config.horizontal_wrap, config.vertical_wrap);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    texture[0].id = id;
+    texture[0].format = format;
+    texture[0].dimensions.width = rect.width;
+    texture[0].dimensions.height = rect.height;
+    texture[0].config = config;
+
+    return GFX_OK;
+}
 gfx_result_t gfx_texture_rewrite(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_texture_image_data_t data) {
-    GLint i;
     gfx_result_t r;
     
+#ifndef GFX_NO_CHECKS
     if(texture.format != data.format) {
         return GFX_ERROR_INVALID_PARAM;
     }
+#endif
     
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, 0, texture.id);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
 
 #ifdef GFX_DEBUG
     r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, texture.config.magnifying_mode, texture.config.minifying_mode);
     if(r != GFX_OK) { return r; }
 
-    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    switch(i) {
-    case GL_CLAMP_TO_EDGE:
-        if(texture.config.horizonatal_wrap != GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE)
-            return GFX_ERROR_INVALID_PARAM;
-        break;
-    case GL_REPEAT:
-        if(texture.config.horizonatal_wrap != GFX_TEXTURE_WRAPPING_MODE_REPEAT)
-            return GFX_ERROR_INVALID_PARAM;
-        break;
-    case GL_MIRRORED_REPEAT:
-        if(texture.config.horizonatal_wrap != GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT)
-            return GFX_ERROR_INVALID_PARAM;
-        break;
-    default:
-        return GFX_ERROR_UNKNOWN;
-    }
-    
-    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    switch(i) {
-    case GL_CLAMP_TO_EDGE:
-        if(texture.config.vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_CLAMP_TO_EDGE)
-            return GFX_ERROR_INVALID_PARAM;
-        break;
-    case GL_REPEAT:
-        if(texture.config.vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_REPEAT)
-            return GFX_ERROR_INVALID_PARAM;
-        break;
-    case GL_MIRRORED_REPEAT:
-        if(texture.config.vertical_wrap != GFX_TEXTURE_WRAPPING_MODE_MIRRORED_REPEAT)
-            return GFX_ERROR_INVALID_PARAM;
-        break;
-    default:
-        return GFX_ERROR_UNKNOWN;
-    }
+    r = gfx_texture_check_wrapping_modes(GL_TEXTURE_2D, texture.config.horizontal_wrap, texture.config.vertical_wrap);
+    if(r != GFX_OK) { return r; }
 #endif
 
     r = gfx_texture_subimage_safe(GL_TEXTURE_2D, data, offset_rect, texture.dimensions);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
 
     return GFX_OK;
+}
+gfx_result_t gfx_texture_rewrite_from_screen(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_screen_rect_t rect) {
+    gfx_result_t r;
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, 0, texture.id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+#ifdef GFX_DEBUG
+    r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, texture.config.magnifying_mode, texture.config.minifying_mode);
+    if(r != GFX_OK) { return r; }
+
+    r = gfx_texture_check_wrapping_modes(GL_TEXTURE_2D, texture.config.horizontal_wrap, texture.config.vertical_wrap);
+    if(r != GFX_OK) { return r; }
+#endif
+
+    r = gfx_texture_copy_subimage_safe(GL_TEXTURE_2D, rect, offset_rect, texture.dimensions);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+    return GFX_OK;    
 }
 gfx_result_t gfx_texture_destroy(gfx_texture_t texture) {
     return gfx_texture_destroy_generic(texture.id);
@@ -4016,39 +4763,54 @@ gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_textur
     GLuint id, i;
     gfx_result_t r;
     
+#ifndef GFX_NO_CHECKS
     if(cubemap == NULL) {
         return GFX_ERROR_INVALID_PARAM;
     }
+#endif
 
     g_gl.GenTextures(1, &id);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR || id == 0) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
 
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, 0, id);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
 
 
     /* GL 2.1 mipmap generation hint: */
     if(g_gl.version == GL2) {
         g_gl.TexParameteri(GL_TEXTURE_CUBE_MAP, GL_GENERATE_MIPMAP, GL_TRUE);
+#ifndef GFX_NO_CHECKS
         if(g_gl.GetError() != GL_NO_ERROR) {
             return GFX_ERROR_UNKNOWN;
         }
+#endif
     }
     
     r = gfx_texture_set_zooming_modes(GL_TEXTURE_2D, config.magnifying_mode, config.minifying_mode);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
     g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+#ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     g_gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+#ifndef GFX_NO_CHECKS
     switch(g_gl.GetError() != GL_NO_ERROR) {
     case GL_NO_ERROR:
         break;
@@ -4058,9 +4820,12 @@ gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_textur
     default:
         return GFX_ERROR_UNKNOWN;
     }
+#endif
     
-    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
     
     cubemap[0].id = id;
@@ -4069,27 +4834,39 @@ gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_textur
     
     if(x_pos_data != NULL) {
         r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_POSITIVE_X, x_pos_data[0]);
+#ifndef GFX_NO_CHECKS
         if(r != GFX_OK) { return r; }
+#endif
     }
     if(x_neg_data != NULL) {
         r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_NEGATIVE_X, x_neg_data[0]);
+#ifndef GFX_NO_CHECKS
         if(r != GFX_OK) { return r; }
+#endif
     }
     if(y_pos_data != NULL) {
         r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_POSITIVE_Y, y_pos_data[0]);
+#ifndef GFX_NO_CHECKS
         if(r != GFX_OK) { return r; }
+#endif
     }
     if(y_neg_data != NULL) {
         r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y, y_neg_data[0]);
+#ifndef GFX_NO_CHECKS
         if(r != GFX_OK) { return r; }
+#endif
     }
     if(z_pos_data != NULL) {
         r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_POSITIVE_Z, z_pos_data[0]);
+#ifndef GFX_NO_CHECKS
         if(r != GFX_OK) { return r; }
+#endif
     }
     if(z_neg_data != NULL) {
         r = gfx_cubemap_add_face(cubemap, GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z, z_neg_data[0]);
+#ifndef GFX_NO_CHECKS
         if(r != GFX_OK) { return r; }
+#endif
     }
 
     return GFX_OK;
@@ -4100,9 +4877,11 @@ gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t
     gfx_texture_dimensions_t dim;
     bool other_faces_fully_created;
     
+#ifndef GFX_NO_CHECKS
     if(cubemap == NULL) {
         return GFX_ERROR_INVALID_PARAM;
     }
+#endif
         
     switch(face) {
     case GFX_CUBE_MAP_FACETYPE_POSITIVE_X:
@@ -4151,12 +4930,16 @@ gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t
         return GFX_ERROR_INVALID_PARAM;
     }
     
+#ifndef GFX_NO_CHECKS
     if(data_ptr[0].created) {
         return GFX_ERROR_OPERATION_INVALID;
     }
+#endif
     
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, 0, id);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
 #ifdef GFX_DEBUG
     r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, cubemap[0].config.magnifying_mode, cubemap[0].config.minifying_mode);
@@ -4164,20 +4947,26 @@ gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t
 #endif
 
     r = gfx_texture_image_safe(image_target, data, &dim);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
     if(other_faces_fully_created) {
         /* GL 3+ and GL ES 2 mipmap generation _only when cubemap face-complete_: */
         if(g_gl.version == GLES2 || g_gl.version == GL3Core) {
-            g_gl.GenerateMipmap(GL_TEXTURE_2D);
+            g_gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
+#ifndef GFX_NO_CHECKS
             if(g_gl.GetError() != GL_NO_ERROR) {
                 return GFX_ERROR_UNKNOWN;
             }
+#endif
         }
     }
 
-    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
     data_ptr[0].created = true;
     data_ptr[0].format = data.format;
@@ -4185,13 +4974,118 @@ gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t
     
     return GFX_OK;
 }
+gfx_result_t gfx_cubemap_add_face_from_screen(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t face, gfx_screen_rect_t rect, gfx_texture_image_data_format_t format) {
+    GLenum image_target;
+    gfx_cubemap_face_data_t* data_ptr;
+    bool other_faces_fully_created;
+    
+#ifndef GFX_NO_CHECKS
+    if(cubemap == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+        
+    switch(face) {
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_X:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_X;
+        data_ptr = &(cubemap[0].face_data.positive_x);
+        other_faces_fully_created = (cubemap[0].face_data.negative_x.created
+            && cubemap[0].face_data.positive_y.created && cubemap[0].face_data.negative_y.created
+            && cubemap[0].face_data.positive_z.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_X:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_X;
+        data_ptr = &(cubemap[0].face_data.negative_x);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.positive_y.created && cubemap[0].face_data.negative_y.created
+            && cubemap[0].face_data.positive_z.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_Y:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_Y;
+        data_ptr = &(cubemap[0].face_data.positive_y);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.negative_x.created && cubemap[0].face_data.negative_y.created
+            && cubemap[0].face_data.positive_z.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_Y;
+        data_ptr = &(cubemap[0].face_data.negative_y);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.negative_x.created && cubemap[0].face_data.positive_y.created
+            && cubemap[0].face_data.positive_z.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_Z:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_Z;
+        data_ptr = &(cubemap[0].face_data.positive_z);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.negative_x.created && cubemap[0].face_data.positive_y.created
+            && cubemap[0].face_data.negative_y.created && cubemap[0].face_data.negative_z.created);
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
+        data_ptr = &(cubemap[0].face_data.negative_z);
+        other_faces_fully_created = (cubemap[0].face_data.positive_x.created
+            && cubemap[0].face_data.negative_x.created && cubemap[0].face_data.positive_y.created
+            && cubemap[0].face_data.negative_y.created && cubemap[0].face_data.positive_z.created);
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+#ifndef GFX_NO_CHECKS
+    if(data_ptr[0].created) {
+        return GFX_ERROR_OPERATION_INVALID;
+    }
+#endif
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, 0, id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+#ifdef GFX_DEBUG
+    r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, cubemap[0].config.magnifying_mode, cubemap[0].config.minifying_mode);
+    if(r != GFX_OK) { return r; }
+#endif
+
+    r = gfx_texture_copy_image_safe(image_target, rect, format);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    if(other_faces_fully_created) {
+        /* GL 3+ and GL ES 2 mipmap generation _only when cubemap face-complete_: */
+        if(g_gl.version == GLES2 || g_gl.version == GL3Core) {
+            g_gl.GenerateMipmap(GL_TEXTURE_CUBE_MAP);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+        }
+    }
+
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    data_ptr[0].created = true;
+    data_ptr[0].format = format;
+    data_ptr[0].dimensions.width = rect.width;
+    data_ptr[0].dimensions.height = rect.height;
+    
+    return GFX_OK;
+}
 gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_texture_image_data_t data) {
     GLenum image_target;
     gfx_cubemap_face_data_t face_data;
     
+#ifndef GFX_NO_CHECKS
     if(cubemap == NULL) {
         return GFX_ERROR_INVALID_PARAM;
     }
+#endif
     
     switch(face) {
     case GFX_CUBE_MAP_FACETYPE_POSITIVE_X:
@@ -4222,6 +5116,7 @@ gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetyp
         return GFX_ERROR_INVALID_PARAM;
     }
     
+#ifndef GFX_NO_CHECKS
     if(!face_data.created) {
         return GFX_ERROR_OPERATION_INVALID;
     }
@@ -4229,10 +5124,12 @@ gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetyp
     if(!face_data.format != data.format) {
         return GFX_ERROR_INVALID_PARAM;
     }
-    
+#endif
     
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, 0, id);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
 #ifdef GFX_DEBUG
     r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, cubemap[0].config.magnifying_mode, cubemap[0].config.minifying_mode);
@@ -4240,10 +5137,81 @@ gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetyp
 #endif
 
     r = gfx_texture_subimage_safe(image_target, data, offset_rect, face_data.dimensions);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
     
-    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
+#endif
+    
+    return GFX_OK;
+}
+gfx_result_t gfx_cubemap_rewrite_face_from_screen(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_screen_rect_t rect) {
+    GLenum image_target;
+    gfx_cubemap_face_data_t face_data;
+    
+#ifndef GFX_NO_CHECKS
+    if(cubemap == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    switch(face) {
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_X:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_X;
+        face_data = cubemap[0].face_data.positive_x;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_X:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_X;
+        face_data = cubemap[0].face_data.negative_x;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_Y:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_Y;
+        face_data = cubemap[0].face_data.positive_y;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_Y:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_Y;
+        face_data = cubemap[0].face_data.negative_y;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_POSITIVE_Z:
+        image_target = GL_TEXTURE_CUBE_MAP_POSITIVE_Z;
+        face_data = cubemap[0].face_data.positive_z;
+        break;
+    case GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z:
+        image_target = GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
+        face_data = cubemap[0].face_data.negative_z;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    
+#ifndef GFX_NO_CHECKS
+    if(!face_data.created) {
+        return GFX_ERROR_OPERATION_INVALID;
+    }
+#endif
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, 0, id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+#ifdef GFX_DEBUG
+    r = gfx_texture_check_zooming_modes(GL_TEXTURE_2D, cubemap[0].config.magnifying_mode, cubemap[0].config.minifying_mode);
+    if(r != GFX_OK) { return r; }
+#endif
+
+    r = gfx_texture_copy_subimage_safe(image_target, rect, offset_rect, face_data.dimensions);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
     
     return GFX_OK;
 }
@@ -4252,27 +5220,341 @@ gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap) {
 }
 
 
+static gfx_result_t gfx_shader_create_shader_object(GLenum type, const char* source, GLuint* out_id) {
+    GLuint id;
+    GLint source_len, i;
+    char* str; GLsizei s;
+    
+#ifndef GFX_NO_CHECKS
+    if(out_id == NULL) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    switch(type) {
+    case GL_VERTEX_SHADER:
+    case GL_FRAGMENT_SHADER:
+        break;
+    default:
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    source_len = strlen(source);
+#endif
+    
+    id = g_gl.CreateShader(type);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(id == 0) {
+        return GFX_ERROR_SHADER_CREATE;
+    }
+#endif
+#ifdef GFX_DEBUG
+    if(g_gl.IsShader(id) != GL_TRUE) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.GetShaderiv(id, GL_SHADER_TYPE, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != type) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+
+#ifdef GFX_NO_CHECKS
+    g_gl.ShaderSource(id, 1, source, NULL);
+#else
+    g_gl.ShaderSource(id, 1, source, &source_len);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    
+#ifdef GFX_DEBUG
+    g_gl.GetShaderiv(id, GL_SHADER_SOURCE_LENGTH, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != source_len+1) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    str = calloc(source_len+1, 1);
+    g_gl.GetShaderSource(id, source_len+1, &s, str);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(s != source_len || strcmp(str, source) != 0) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    free(str);
+#endif
+
+    g_gl.CompileShader(vertex_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.GetShaderiv(id, GL_COMPILE_STATUS, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != GL_TRUE) {
+        return GFX_ERROR_SHADER_COMPILATION_FAILED;
+    }
+#endif
+
+#ifdef GFX_DEBUG
+    g_gl.GetShaderiv(id, GL_INFO_LOG_LENGTH, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    str = calloc(i, 1);
+    g_gl.GetShaderInfoLog(id, i, &s, str);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(s != i-1) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    fprintf(stderr, "OpenGL Shader Info Log for object with id %i:\n %s", id, str);
+    free(str);
+#endif
+    
+    out_id[0] = id;
+
+    return GFX_OK;
+}
+
+gfx_result_t gfx_shader_create(const char* vertex_shader_source, const char* fragment_shader_source, gfx_shader_t* shader) {
+    GLuint vertex_id, fragment_id, program_id;
+    GLint i; char* str; GLsizei s; GLuint a[2];
+    gfx_result_t r;
+    
+#ifndef GFX_NO_CHECKS
+    if(vertex_shader_source == NULL || fragment_shader_source == NULL || shader == NULL) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = gfx_shader_create_shader_object(GL_VERTEX_SHADER, vertex_shader_source, &vertex_id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    r = gfx_shader_create_shader_object(GL_FRAGMENT_SHADER, fragment_shader_source, &fragment_id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    program_id = glCreateProgram();
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(program_id == 0) {
+        return GFX_ERROR_SHADER_PROGRAM_CREATE;
+    }
+#endif
+#ifdef GFX_DEBUG
+    if(g_gl.IsProgram(program_id) != GL_TRUE) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    
+    glAttachShader(program_id, vertex_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    glAttachShader(program_id, fragment_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef GFX_DEBUG
+    g_gl.GetProgramiv(program_id, GL_ATTACHED_SHADERS, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != 2) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    glGetAttachedShaders(program_id, 2, &s, a);
+    if(s != 2) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(!((a[0] == vertex_id && a[1] == fragment_id) || (a[0] == fragment_id && a[1] == vertex_id))) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+
+    glLinkProgram(program_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.GetProgramiv(program_id, GL_LINK_STATUS, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != GL_TRUE) {
+        return GFX_ERROR_SHADER_PROGRAM_LINK;
+    }
+#endif
+
+    glValidateProgram(program_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.GetProgramiv(program_id, GL_VALIDATE_STATUS, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != GL_TRUE) {
+        return GFX_ERROR_SHADER_PROGRAM_VALIDATE;
+    }
+#endif
+
+#ifdef GFX_DEBUG
+    g_gl.GetProgramiv(program_id, GL_INFO_LOG_LENGTH, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    str = calloc(i, 1);
+    g_gl.GetProgramInfoLog(id, i, &s, str);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(s != i-1) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    fprintf(stderr, "OpenGL Program Info Log for object with id %i:\n %s", program_id, str);
+    free(str);
+#endif
+
+    /* We explicitly keep the vertex and fragment shader id's to be able to detach them correctly later. */
+    shader[0].vertex_id = program_id;
+    shader[0].fragment_id = program_id;
+    shader[0].program_id = program_id;
+    return GFX_OK;
+}
+gfx_result_t gfx_shader_destroy(gfx_shader_t shader) {
+#ifdef GFX_DEBUG
+    GLint i; GLsizei s; GLuint a[2];
+
+    if(g_gl.IsShader(shader.vertex_id) != GL_TRUE) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.GetShaderiv(shader.vertex_id, GL_SHADER_TYPE, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != GL_VERTEX_SHADER) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    if(g_gl.IsShader(shader.fragment_id) != GL_TRUE) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.GetShaderiv(shader.fragment_id, GL_SHADER_TYPE, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != GL_FRAGMENT_SHADER) {
+        return GFX_ERROR_UNKNOWN;
+    }
+
+    if(g_gl.IsProgram(shader.program_id) != GL_TRUE) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    
+    g_gl.GetProgramiv(shader.program_id, GL_ATTACHED_SHADERS, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != 2) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    glGetAttachedShaders(shader.program_id, 2, &s, a);
+    if(s != 2) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(!((a[0] == shader.vertex_id && a[1] == shader.fragment_id) || (a[0] == shader.fragment_id && a[1] == shader.vertex_id))) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+
+    glDetachShader(shader.program_id, shader.vertex_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    glDeleteShader(shader.vertex_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    glDetachShader(shader.program_id, shader.fragment_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    glDeleteShader(shader.fragment_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    
+    g_gl.DeleteProgram(shader.program_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    
+    return GFX_OK;
+}
+
+
+
+
 
 
 /* unused GL functions and variables:
 
-
-actuall, we _do_ need glGenerateMipmap for GL 3 and GLES 2, but need to use glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE); for GL 2.1!
-See https://www.khronos.org/opengl/wiki/Common_Mistakes#Automatic_mipmap_generation
-
-
-
-
-texture portion:
-
-glCopyTexImage2D , glCopyTexSubImage2D 
+open features: allow explicit override on other mipmap levels of textures?
 
 
 
 shader portion:
 
-glAttachShader , glCompileShader , glCreateProgram , glCreateShader , glDeleteProgram , glDeleteShader , glDetachShader, glLinkProgram, glShaderSource , glUniform[1|2|3|4][f|i][v], glUniformMatrix[2|3|4]fv , glUseProgram , glValidateProgram
-glGetActiveAttrib , glGetActiveUniform , glGetAttachedShaders , glGetAttribLocation , glGetProgramInfoLog , glGetProgramiv , glGetShaderInfoLog , glGetShaderSource , glGetShaderiv , glGetUniformfv /  glGetUniformiv , glGetUniformLocation, glIsProgram, glIsShader
+ glUniform[1|2|3|4][f|i][v], glUniformMatrix[2|3|4]fv , glUseProgram 
+glGetActiveAttrib , glGetActiveUniform , glGetAttribLocation , glGetUniformfv / glGetUniformiv , glGetUniformLocation
 GL_CURRENT_PROGRAM              1n      for checking if state change worked
 GL_SHADING_LANGUAGE_VERSION     1s       __CONSTANT__
 
