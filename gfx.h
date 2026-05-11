@@ -614,7 +614,7 @@ gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetyp
 gfx_result_t gfx_cubemap_rewrite_face_from_screen(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_screen_rect_t rect);
 gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
 
-
+        /* the shade source should _not_ include the #version line, that will be added in depending on GL version. Use GL2 / GLES2 GLSL features. */
 gfx_result_t gfx_shader_create(const char* vertex_shader_source, const char* fragment_shader_source, gfx_shader_t* shader);
 gfx_result_t gfx_shader_destroy(gfx_shader_t shader);
 
