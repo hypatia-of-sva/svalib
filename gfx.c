@@ -5641,9 +5641,9 @@ typedef enum gfx_index_type_t {
 typedef struct gfx_uniform_data_info_t {
     const char* name;
     gfx_uniform_data_type_t type;
-    size_t count;
+    size_t array_size; /* has to be 1 for non-arrays */
     union {
-        bool* bv;
+        bool32_t* bv;
         int* iv;
         float* fv;
         gfx_texture_t* texture;
@@ -5670,19 +5670,678 @@ gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_params_t par
 
 
 GFX_ERROR_COULD_NOT_ACTIVATE_SHADER
-
+GFX_ERROR_UNIFORM_NOT_FOUND
+GFX_ERROR_NOT_ENOUGH_TEXTURE_UNITS
 
 
 
 static gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
+    char* str; int len; GLsizei s; GLint i; GLenum e;
+    gfx_result_t r;
+    GLuint id = shader_program.program_id;
+    GLint check_iv[4]; GLfloat check_fv[16];
+    int used_units_for_textures = 0, used_units_for_cubemaps = 0;
     
+    if(nr_uniforms == 0) {
+#ifndef GFX_NO_CHECKS
+        if(uniforms != NULL) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+#endif
+        return GFX_OK;
+    }
+    
+#ifndef GFX_NO_CHECKS
+    if(uniforms == NULL || nr_uniforms < 0) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    for(int i = 0; i < nr_uniforms; i++) {
+        GLint loc;
+        
+        loc = glGetUniformLocation(id, uniforms[i].name);
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(loc == -1) {
+            return GFX_ERROR_UNIFORM_NOT_FOUND;
+        }
+#endif
+
+#ifdef GFX_DEBUG
+        if(uniforms[i].name == NULL) {
+            return GFX_ERROR_UNKNOWN; /* No param error bc it should have failed earlier */
+        }
+        len = strlen(uniforms[i].name);
+        str = calloc(len+1,1);
+        glGetActiveUniform(id, loc, len, &s, &i, &e, str);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(s != len || strcmp(str, uniforms[i].name) != 0) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != uniforms[i].array_size) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+        switch(e) {
+        case GL_FLOAT:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_FLOAT)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_FLOAT_VEC2:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_VEC2)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_FLOAT_VEC3:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_VEC3)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_FLOAT_VEC4:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_VEC4)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_INT:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_INT)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_INT_VEC2:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_IVEC2)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_INT_VEC3:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_IVEC3)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_INT_VEC4:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_IVEC4)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_BOOL:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_BOOL)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_BOOL_VEC2:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_BVEC2)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_BOOL_VEC3:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_BVEC3)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_BOOL_VEC4:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_BVEC4)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_FLOAT_MAT2:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_MAT2)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_FLOAT_MAT3:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_MAT3)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_FLOAT_MAT4:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_MAT4)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_SAMPLER_2D:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_SAMPLER_2D)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        case GL_SAMPLER_CUBE:
+            if(uniforms[i].type != GFX_UNIFORM_DATA_TYPE_SAMPLER_CUBE_MAP)
+                return GFX_ERROR_INVALID_PARAM;
+            break;
+        default:
+            return GFX_ERROR_INVALID_PARAM;
+        }
+        free(str);
+#endif
+
+        switch(uniforms[i].type) {
+        case GFX_UNIFORM_DATA_TYPE_INT:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.iv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform1iv(loc, uniforms[i].array_size, uniforms[i].data.iv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != uniforms[i].data.iv[i]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_IVEC2:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.iv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform2iv(loc, uniforms[i].array_size, uniforms[i].data.iv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != uniforms[i].data.iv[2*i] || check_iv[1] != uniforms[i].data.iv[2*i+1]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_IVEC3:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.iv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform3iv(loc, uniforms[i].array_size, uniforms[i].data.iv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != uniforms[i].data.iv[3*i] || check_iv[1] != uniforms[i].data.iv[3*i+1] || check_iv[2] != uniforms[i].data.iv[3*i+2]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_IVEC4:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.iv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform4iv(loc, uniforms[i].array_size, uniforms[i].data.iv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != uniforms[i].data.iv[4*i] || check_iv[1] != uniforms[i].data.iv[4*i+1] || check_iv[2] != uniforms[i].data.iv[4*i+2] || check_iv[2] != uniforms[i].data.iv[4*i+3]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_BOOL:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.bv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform1iv(loc, uniforms[i].array_size, uniforms[i].data.bv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != uniforms[i].data.bv[i]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_BVEC2:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.bv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform2iv(loc, uniforms[i].array_size, uniforms[i].data.bv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != uniforms[i].data.bv[2*i] || check_iv[1] != uniforms[i].data.bv[2*i+1]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_BVEC3:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.bv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform3iv(loc, uniforms[i].array_size, uniforms[i].data.bv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != uniforms[i].data.bv[3*i] || check_iv[1] != uniforms[i].data.bv[3*i+1] || check_iv[2] != uniforms[i].data.bv[3*i+2]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_BVEC4:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.bv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform4iv(loc, uniforms[i].array_size, uniforms[i].data.bv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != uniforms[i].data.bv[4*i] || check_iv[1] != uniforms[i].data.bv[4*i+1] || check_iv[2] != uniforms[i].data.bv[4*i+2] || check_iv[2] != uniforms[i].data.bv[4*i+3]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_FLOAT:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.fv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform1fv(loc, uniforms[i].array_size, uniforms[i].data.fv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformfv(id, loc+i, &check_fv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_fv[0] != uniforms[i].data.fv[i]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_VEC2:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.fv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform2fv(loc, uniforms[i].array_size, uniforms[i].data.fv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformfv(id, loc+i, &check_fv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_fv[0] != uniforms[i].data.fv[2*i] || check_fv[1] != uniforms[i].data.fv[2*i+1]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_VEC3:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.fv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform3fv(loc, uniforms[i].array_size, uniforms[i].data.fv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformfv(id, loc+i, &check_fv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_fv[0] != uniforms[i].data.fv[3*i] || check_fv[1] != uniforms[i].data.fv[3*i+1] || check_fv[2] != uniforms[i].data.fv[3*i+2]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_VEC4:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.fv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.Uniform4fv(loc, uniforms[i].array_size, uniforms[i].data.fv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformfv(id, loc+i, &check_fv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_fv[0] != uniforms[i].data.fv[4*i] || check_fv[1] != uniforms[i].data.fv[4*i+1] || check_fv[2] != uniforms[i].data.fv[4*i+2] || check_fv[2] != uniforms[i].data.fv[4*i+3]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_MAT2:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.fv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.UniformMatrix2fv(loc, uniforms[i].array_size, GL_FALSE, uniforms[i].data.fv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformfv(id, loc+i, &check_fv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_fv[0] != uniforms[i].data.fv[4*i] || check_fv[1] != uniforms[i].data.fv[4*i+1] || check_fv[2] != uniforms[i].data.fv[4*i+2] || check_fv[2] != uniforms[i].data.fv[4*i+3]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_MAT3:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.fv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.UniformMatrix3fv(loc, uniforms[i].array_size, GL_FALSE, uniforms[i].data.fv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformfv(id, loc+i, &check_fv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_fv[0] != uniforms[i].data.fv[4*i] || check_fv[1] != uniforms[i].data.fv[4*i+1] || check_fv[2] != uniforms[i].data.fv[4*i+2] || check_fv[2] != uniforms[i].data.fv[4*i+3]
+                    || check_fv[0] != uniforms[i].data.fv[4*i+4] || check_fv[1] != uniforms[i].data.fv[4*i+5] || check_fv[2] != uniforms[i].data.fv[4*i+6]
+                    || check_fv[2] != uniforms[i].data.fv[4*i+7] || check_fv[2] != uniforms[i].data.fv[4*i+8]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_MAT4:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.fv == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            g_gl.UniformMatrix4fv(loc, uniforms[i].array_size, GL_FALSE, uniforms[i].data.fv);
+#ifndef GFX_NO_CHECKS
+            if(g_gl.GetError() != GL_NO_ERROR) {
+                return GFX_ERROR_UNKNOWN;
+            }
+#endif
+#ifdef GFX_DEBUG
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+                g_gl.GetUniformfv(id, loc+i, &check_fv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_fv[0] != uniforms[i].data.fv[4*i] || check_fv[1] != uniforms[i].data.fv[4*i+1] || check_fv[2] != uniforms[i].data.fv[4*i+2] || check_fv[2] != uniforms[i].data.fv[4*i+3]
+                    || check_fv[0] != uniforms[i].data.fv[4*i+4] || check_fv[1] != uniforms[i].data.fv[4*i+5] || check_fv[2] != uniforms[i].data.fv[4*i+6]
+                    || check_fv[2] != uniforms[i].data.fv[4*i+7] || check_fv[2] != uniforms[i].data.fv[4*i+8] || check_fv[2] != uniforms[i].data.fv[4*i+9] 
+                    || check_fv[2] != uniforms[i].data.fv[4*i+10] || check_fv[2] != uniforms[i].data.fv[4*i+11] || check_fv[2] != uniforms[i].data.fv[4*i+12]
+                    || check_fv[2] != uniforms[i].data.fv[4*i+13] || check_fv[2] != uniforms[i].data.fv[4*i+14] || check_fv[2] != uniforms[i].data.fv[4*i+15]) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+            }
+#endif
+            break;
+        case GFX_UNIFORM_DATA_TYPE_SAMPLER_2D:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.texture == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+#ifndef GFX_NO_CHECKS
+                if(used_units_for_textures > (g_gl.limits.texture.maximum_usable_units.combined)-1) {
+                    return GFX_ERROR_NOT_ENOUGH_TEXTURE_UNITS;
+                }
+#endif
+                GLenum e = GL_TEXTURE0 + used_units_for_textures;
+            
+                r = gfx_texture_bind_safe(e, GL_TEXTURE_2D, 0, uniforms[i].data.texture[i].id);
+                if(r != GLX_OK) { return r; }
+            
+                g_gl.Uniform1iv(loc+i, 1, used_units_for_textures);
+#ifndef GFX_NO_CHECKS
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+#endif
+#ifdef GFX_DEBUG
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != used_units_for_textures) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+#endif
+                used_units_for_textures++;
+            }
+            break;
+        case GFX_UNIFORM_DATA_TYPE_SAMPLER_CUBE_MAP:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.cubemap == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+#ifndef GFX_NO_CHECKS
+                if(used_units_for_cubemaps > (g_gl.limits.texture.maximum_usable_units.combined)-1) {
+                    return GFX_ERROR_NOT_ENOUGH_TEXTURE_UNITS;
+                }
+#endif
+                GLenum e = GL_TEXTURE0 + used_units_for_cubemaps;
+            
+                r = gfx_texture_bind_safe(e, GL_TEXTURE_CUBE_MAP, 0, uniforms[i].data.cubemap[i].id);
+                if(r != GLX_OK) { return r; }
+            
+                g_gl.Uniform1iv(loc+i, 1, used_units_for_cubemaps);
+#ifndef GFX_NO_CHECKS
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+#endif
+#ifdef GFX_DEBUG
+                g_gl.GetUniformiv(id, loc+i, &check_iv);
+                if(g_gl.GetError() != GL_NO_ERROR) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+                if(check_iv[0] != used_units_for_cubemaps) {
+                    return GFX_ERROR_UNKNOWN;
+                }
+#endif
+                used_units_for_cubemaps++;
+            }
+            break;
+        default:
+            return GFX_ERROR_INVALID_PARAM;
+        }
+    }
+    
+    return GFX_OK;
 }
 static gfx_result_t gfx_setup_attributes(gfx_shader_t shader_program, gfx_attribute_data_info_t* attributes, size_t nr_attributes) {
     
 }
-static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw_params_t params, gfx_draw_shape_t shape, GLenum* mode) {
-    GLenum m;
+
+
+static gfx_result_t gfx_cleanup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
+    GLenum e;
+    gfx_result_t r;
+    int used_units_for_textures = 0, used_units_for_cubemaps = 0;
     
+    if(nr_uniforms == 0) {
+#ifndef GFX_NO_CHECKS
+        if(uniforms != NULL) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+#endif
+        return GFX_OK;
+    }
+    
+#ifndef GFX_NO_CHECKS
+    if(uniforms == NULL || nr_uniforms < 0) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    for(int i = 0; i < nr_uniforms; i++) {
+        switch(uniforms[i].type) {
+        case GFX_UNIFORM_DATA_TYPE_INT:
+        case GFX_UNIFORM_DATA_TYPE_IVEC2:
+        case GFX_UNIFORM_DATA_TYPE_IVEC3:
+        case GFX_UNIFORM_DATA_TYPE_IVEC4:
+        case GFX_UNIFORM_DATA_TYPE_BOOL:
+        case GFX_UNIFORM_DATA_TYPE_BVEC2:
+        case GFX_UNIFORM_DATA_TYPE_BVEC3:
+        case GFX_UNIFORM_DATA_TYPE_BVEC4:
+        case GFX_UNIFORM_DATA_TYPE_FLOAT:
+        case GFX_UNIFORM_DATA_TYPE_VEC2:
+        case GFX_UNIFORM_DATA_TYPE_VEC3:
+        case GFX_UNIFORM_DATA_TYPE_VEC4:
+        case GFX_UNIFORM_DATA_TYPE_MAT2:
+        case GFX_UNIFORM_DATA_TYPE_MAT3:
+        case GFX_UNIFORM_DATA_TYPE_MAT4:
+        case GFX_UNIFORM_DATA_TYPE_SAMPLER_2D:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.texture == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+#ifndef GFX_NO_CHECKS
+                if(used_units_for_textures > (g_gl.limits.texture.maximum_usable_units.combined)-1) {
+                    return GFX_ERROR_NOT_ENOUGH_TEXTURE_UNITS;
+                }
+#endif
+                GLenum e = GL_TEXTURE0 + used_units_for_textures;
+            
+                r = gfx_texture_bind_safe(e, GL_TEXTURE_2D, uniforms[i].data.texture[i].id, 0);
+                if(r != GLX_OK) { return r; }
+            
+                used_units_for_textures++;
+            }
+            break;
+        case GFX_UNIFORM_DATA_TYPE_SAMPLER_CUBE_MAP:
+#ifndef GFX_NO_CHECKS
+            if(uniforms[i].data.cubemap == NULL) {
+                return GFX_ERROR_INVALID_PARAM;
+            }
+#endif
+            for(int i = 0; i < uniforms[i].array_size; i++) {
+#ifndef GFX_NO_CHECKS
+                if(used_units_for_cubemaps > (g_gl.limits.texture.maximum_usable_units.combined)-1) {
+                    return GFX_ERROR_NOT_ENOUGH_TEXTURE_UNITS;
+                }
+#endif
+                GLenum e = GL_TEXTURE0 + used_units_for_cubemaps;
+            
+                r = gfx_texture_bind_safe(e, GL_TEXTURE_CUBE_MAP, uniforms[i].data.cubemap[i].id, 0);
+                if(r != GLX_OK) { return r; }
+            
+                used_units_for_cubemaps++;
+            }
+            break;
+        default:
+            return GFX_ERROR_INVALID_PARAM;
+        }
+    }
+    
+    return GFX_OK;
+}
+static gfx_result_t gfx_cleanup_attributes(gfx_shader_t shader_program, gfx_attribute_data_info_t* attributes, size_t nr_attributes) {
+    // TODO: disable attribs
+    
+}
+
+static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw_params_t params, gfx_draw_shape_t shape, GLenum* mode) {
+    gfx_result_t r; GLenum m; GLint i;
+
 #ifndef GFX_NO_CHECKS
     if(mode == NULL) {
         return GFX_ERROR_UNKNOWN;
@@ -5694,10 +6353,28 @@ static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw
     if(r != GFX_OK) { return r; }
 #endif
 
+#ifdef GFX_DEBUG
+    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != 0) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
     g_gl.UseProgram(shader_program.program_id);
 #ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
         return GFX_ERROR_COULD_NOT_ACTIVATE_SHADER;
+    }
+#endif
+#ifdef GFX_DEBUG
+    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != shader_program.program_id) {
+        return GFX_ERROR_UNKNOWN;
     }
 #endif
 
@@ -5742,11 +6419,40 @@ static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw
     return GFX_OK;
 }
 static gfx_result_t gfx_draw_generic_cleanup(gfx_shader_t shader_program, gfx_draw_params_t params) {
-    // TODO: unbind used textures, disable attribs
+    gfx_result_t r; GLint i;
+    
+#ifdef GFX_DEBUG
+    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != shader_program.program_id) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    
+    r = gfx_cleanup_attributes(shader_program, params.uniforms, params.nr_uniforms);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+    r = gfx_cleanup_uniforms(shader_program, params.uniforms, params.nr_uniforms);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
 
     g_gl.UseProgram(0);
 #ifndef GFX_NO_CHECKS
     if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef GFX_DEBUG
+    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != 0) {
         return GFX_ERROR_UNKNOWN;
     }
 #endif
@@ -5837,21 +6543,12 @@ open features: allow explicit override on other mipmap levels of textures?
 
 
 
-shader portion:
-
-
-
-
- glUniform[1|2|3|4][f|i][v], glUniformMatrix[2|3|4]fv , glGetActiveUniform, glGetUniformfv / glGetUniformiv , glGetUniformLocation
  
    
 glGetActiveAttrib ,  , glGetAttribLocation , 
-GL_CURRENT_PROGRAM              1n      for checking if state change worked
-GL_SHADING_LANGUAGE_VERSION     1s       __CONSTANT__
 
-glBindAttribLocation , glEnableVertexAttribArray , glDisableVertexAttribArray , glVertexAttrib[1|2|3|4]f[v], glVertexAttribPointer
-glGetVertexAttribfv, glGetVertexAttribiv , glGetVertexAttribPointerv
-        should glVertexAttrib and glGetVertexAttrib be generally be not used bc of WebGL only allowing the Pointers / this being more compatible with the vertex array anyway?
+glBindAttribLocation , glEnableVertexAttribArray , glDisableVertexAttribArray , , glVertexAttribPointer
+ , glGetVertexAttribPointerv
 
 
 
@@ -5871,12 +6568,17 @@ glStencilFunc because glStencilFuncSeparate
 glStencilMask because glStencilMaskSeparate 
 glStencilOp because glStencilOpSeparate 
 
+glVertexAttrib[1|2|3|4]f[v]     because it'S effectively a uniform
+glGetVertexAttribfv, glGetVertexAttribiv    bc we dont use the setter
+
 
 these strings: can only really be used for a debug printout; glGetString might still be used to parse the shader language internally.
 GL_VENDOR                       1s       __CONSTANT__
 GL_RENDERER                     1s       __CONSTANT__
 GL_VERSION                      1s       __CONSTANT__
 
+MIGHT be useful: but needs to be especially parsed
+GL_SHADING_LANGUAGE_VERSION     1s       __CONSTANT__
 
 
 unusable:
