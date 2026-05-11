@@ -42,7 +42,10 @@ typedef enum gfx_result_t {
     GFX_ERROR_SHADER_PROGRAM_CREATE = -14,
     GFX_ERROR_SHADER_PROGRAM_LINK = -15,
     GFX_ERROR_SHADER_PROGRAM_VALIDATE = -16,
-    GFX_ERROR_UNKNOWN = -17,
+    GFX_ERROR_COULD_NOT_ACTIVATE_SHADER = -17,
+    GFX_ERROR_UNIFORM_NOT_FOUND = -18,
+    GFX_ERROR_NOT_ENOUGH_TEXTURE_UNITS = -19,
+    GFX_ERROR_UNKNOWN = -20,
     
     GFX_RESULT_MAX_ENUM = 0x7FFFFFFF,
 } gfx_result_t;
@@ -361,6 +364,51 @@ typedef enum gfx_cubemap_facetype_t {
     GFX_CUBE_MAP_FACETYPE_NEGATIVE_Z = 5,
     GFX_CUBE_MAP_FACETYPE_MAX_ENUM = 0x7f
 } gfx_cubemap_facetype_t;
+typedef enum gfx_uniform_data_type_t {
+    GFX_UNIFORM_DATA_TYPE_INT = 0,
+    GFX_UNIFORM_DATA_TYPE_IVEC2 = 1,
+    GFX_UNIFORM_DATA_TYPE_IVEC3 = 2,
+    GFX_UNIFORM_DATA_TYPE_IVEC4 = 3,
+    GFX_UNIFORM_DATA_TYPE_BOOL = 4,
+    GFX_UNIFORM_DATA_TYPE_BVEC2 = 5,
+    GFX_UNIFORM_DATA_TYPE_BVEC3 = 6,
+    GFX_UNIFORM_DATA_TYPE_BVEC4 = 7,
+    GFX_UNIFORM_DATA_TYPE_FLOAT = 8,
+    GFX_UNIFORM_DATA_TYPE_VEC2 = 9,
+    GFX_UNIFORM_DATA_TYPE_VEC3 = 10,
+    GFX_UNIFORM_DATA_TYPE_VEC4 = 11,
+    GFX_UNIFORM_DATA_TYPE_MAT2 = 12,
+    GFX_UNIFORM_DATA_TYPE_MAT3 = 13,
+    GFX_UNIFORM_DATA_TYPE_MAT4 = 14,
+    GFX_UNIFORM_DATA_TYPE_SAMPLER_2D = 15,
+    GFX_UNIFORM_DATA_TYPE_SAMPLER_CUBE_MAP = 16,
+    GFX_UNIFORM_DATA_TYPE_MAX_ENUM = 0x7f
+} gfx_uniform_data_type_t
+typedef enum gfx_attribute_data_type_t {
+    GFX_UNIFORM_DATA_TYPE_FLOAT = 1,
+    GFX_UNIFORM_DATA_TYPE_VEC2 = 2,
+    GFX_UNIFORM_DATA_TYPE_VEC3 = 3,
+    GFX_UNIFORM_DATA_TYPE_VEC4 = 4,
+    GFX_UNIFORM_DATA_TYPE_MAT2 = 5,
+    GFX_UNIFORM_DATA_TYPE_MAT3 = 6,
+    GFX_UNIFORM_DATA_TYPE_MAT4 = 7,
+    GFX_UNIFORM_DATA_TYPE_MAX_ENUM = 0x7f
+} gfx_attribute_data_type_t
+typedef enum gfx_draw_shape_t {
+    GFX_DRAW_SHAPE_POINTS = 0,
+    GFX_DRAW_SHAPE_LINE_STRIP = 1,
+    GFX_DRAW_SHAPE_LINE_LOOP = 2,
+    GFX_DRAW_SHAPE_LINES = 3,
+    GFX_DRAW_SHAPE_TRIANGLE_STRIP = 4,
+    GFX_DRAW_SHAPE_TRIANGLE_FAN = 5,
+    GFX_DRAW_SHAPE_TRIANGLES = 6,
+    GFX_DRAW_SHAPE_MAX_ENUM = 0x7f,
+} gfx_draw_shape_t;
+typedef enum gfx_index_type_t {
+    GFX_INDEX_TYPE_UINT8 = 0,
+    GFX_INDEX_TYPE_UINT16 = 1,
+    GFX_INDEX_TYPE_MAX_ENUM = 0x7f,
+}
 
 typedef struct gfx_event_t {
     gfx_event_type_t type;
@@ -555,6 +603,19 @@ typedef struct gfx_screen_rect_t {
 typedef struct gfx_shader_t {
     uint32_t vertex_id, fragment_id, program_id;
 } shader_t;
+typedef struct gfx_uniform_data_info_t {
+    const char* name;
+    gfx_uniform_data_type_t type;
+    size_t array_size; /* has to be 1 for non-arrays */
+    union {
+        bool32_t* bv;
+        int* iv;
+        float* fv;
+        gfx_texture_t* texture;
+        gfx_cubemap_t* cubemap;
+    } data;
+} gfx_uniform_data_info_t;
+
 
 /* icon is optional and can be left NULL */
 gfx_result_t gfx_init(const char* window_name, int width, int height, gfx_window_icon_t* icon);
@@ -614,8 +675,21 @@ gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetyp
 gfx_result_t gfx_cubemap_rewrite_face_from_screen(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_screen_rect_t rect);
 gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
 
-        /* the shade source should _not_ include the #version line, that will be added in depending on GL version. Use GL2 / GLES2 GLSL features. */
+        /* the shade source should _not_ include the #version line, that will be added in depending on GL version. In terms of version, use GL2 1.10 / GLES2 1.00 GLSL features. */
 gfx_result_t gfx_shader_create(const char* vertex_shader_source, const char* fragment_shader_source, gfx_shader_t* shader);
 gfx_result_t gfx_shader_destroy(gfx_shader_t shader);
+
+
+        /* matrix types allocate consecutive indices per column, that's why you need the type in the freeing function */
+gfx_result_t gfx_vertex_attribute_index_alloc(uint32_t index, gfx_attribute_data_type_t type, gfx_vertex_buffer_t* buffer, uint32_t offset, uint32_t stride);
+gfx_result_t gfx_vertex_attribute_index_free(uint32_t index, gfx_attribute_data_type_t type);
+gfx_result_t gfx_shader_associate_attributes_indices(gfx_shader_t shader_program, uint32_t* indices, const char** variable_names, size_t count);
+
+gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
+gfx_result_t gfx_cleanup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
+
+gfx_result_t gfx_draw(gfx_shader_t shader_program, gfx_draw_shape_t shape, uint32_t first, uint32_t count);
+gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_shape_t shape, gfx_index_buffer_t* indices, gfx_index_type_t index_type, uint32_t offset, uint32_t count);
+
 
 #endif

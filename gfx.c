@@ -5386,6 +5386,55 @@ static gfx_result_t gfx_shader_check(gfx_shader_t shader) {
     return GFX_OK;
 #endif
 }
+static gfx_result_t gfx_shader_link_and_validate(GLuint program_id) {
+    GLint i; 
+    
+    glLinkProgram(program_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.GetProgramiv(program_id, GL_LINK_STATUS, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != GL_TRUE) {
+        return GFX_ERROR_SHADER_PROGRAM_LINK;
+    }
+#endif
+
+    glValidateProgram(program_id);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    g_gl.GetProgramiv(program_id, GL_VALIDATE_STATUS, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != GL_TRUE) {
+        return GFX_ERROR_SHADER_PROGRAM_VALIDATE;
+    }
+#endif
+
+#ifdef GFX_DEBUG
+    g_gl.GetProgramiv(program_id, GL_INFO_LOG_LENGTH, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    str = calloc(i, 1);
+    g_gl.GetProgramInfoLog(id, i, &s, str);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(s != i-1) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    fprintf(stderr, "OpenGL Program Info Log for object with id %i:\n %s", program_id, str);
+    free(str);
+#endif
+}
+
 
 const char* GL_prefix = "#version 110\n";
 const char* GLES_vertex_prefix = "#version 100\n";
@@ -5497,50 +5546,12 @@ gfx_result_t gfx_shader_create(const char* vertex_shader_source_versionless, con
     }
 #endif
 
-    glLinkProgram(program_id);
+
+    r = gfx_shader_link_and_validate(program_id);
 #ifndef GFX_NO_CHECKS
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    g_gl.GetProgramiv(program_id, GL_LINK_STATUS, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(i != GL_TRUE) {
-        return GFX_ERROR_SHADER_PROGRAM_LINK;
-    }
+    if(r != GFX_OK) { return r; }
 #endif
 
-    glValidateProgram(program_id);
-#ifndef GFX_NO_CHECKS
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    g_gl.GetProgramiv(program_id, GL_VALIDATE_STATUS, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(i != GL_TRUE) {
-        return GFX_ERROR_SHADER_PROGRAM_VALIDATE;
-    }
-#endif
-
-#ifdef GFX_DEBUG
-    g_gl.GetProgramiv(program_id, GL_INFO_LOG_LENGTH, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    str = calloc(i, 1);
-    g_gl.GetProgramInfoLog(id, i, &s, str);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(s != i-1) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    fprintf(stderr, "OpenGL Program Info Log for object with id %i:\n %s", program_id, str);
-    free(str);
-#endif
 
     /* We explicitly keep the vertex and fragment shader id's to be able to detach them correctly later. */
     shader[0].vertex_id = program_id;
@@ -5592,90 +5603,316 @@ gfx_result_t gfx_shader_destroy(gfx_shader_t shader) {
 
 
 
-typedef enum gfx_uniform_data_type_t {
-    GFX_UNIFORM_DATA_TYPE_INT = 0,
-    GFX_UNIFORM_DATA_TYPE_IVEC2 = 1,
-    GFX_UNIFORM_DATA_TYPE_IVEC3 = 2,
-    GFX_UNIFORM_DATA_TYPE_IVEC4 = 3,
-    GFX_UNIFORM_DATA_TYPE_BOOL = 4,
-    GFX_UNIFORM_DATA_TYPE_BVEC2 = 5,
-    GFX_UNIFORM_DATA_TYPE_BVEC3 = 6,
-    GFX_UNIFORM_DATA_TYPE_BVEC4 = 7,
-    GFX_UNIFORM_DATA_TYPE_FLOAT = 8,
-    GFX_UNIFORM_DATA_TYPE_VEC2 = 9,
-    GFX_UNIFORM_DATA_TYPE_VEC3 = 10,
-    GFX_UNIFORM_DATA_TYPE_VEC4 = 11,
-    GFX_UNIFORM_DATA_TYPE_MAT2 = 12,
-    GFX_UNIFORM_DATA_TYPE_MAT3 = 13,
-    GFX_UNIFORM_DATA_TYPE_MAT4 = 14,
-    GFX_UNIFORM_DATA_TYPE_SAMPLER_2D = 15,
-    GFX_UNIFORM_DATA_TYPE_SAMPLER_CUBE_MAP = 16,
-    GFX_UNIFORM_DATA_TYPE_MAX_ENUM = 0x7f
-} gfx_uniform_data_type_t
-typedef enum gfx_attribute_data_type_t {
-    GFX_UNIFORM_DATA_TYPE_FLOAT = 1,
-    GFX_UNIFORM_DATA_TYPE_VEC2 = 2,
-    GFX_UNIFORM_DATA_TYPE_VEC3 = 3,
-    GFX_UNIFORM_DATA_TYPE_VEC4 = 4,
-    GFX_UNIFORM_DATA_TYPE_MAT2 = 5,
-    GFX_UNIFORM_DATA_TYPE_MAT3 = 6,
-    GFX_UNIFORM_DATA_TYPE_MAT4 = 7,
-    GFX_UNIFORM_DATA_TYPE_MAX_ENUM = 0x7f
-} gfx_attribute_data_type_t
-typedef enum gfx_draw_shape_t {
-    GFX_DRAW_SHAPE_POINTS = 0,
-    GFX_DRAW_SHAPE_LINE_STRIP = 1,
-    GFX_DRAW_SHAPE_LINE_LOOP = 2,
-    GFX_DRAW_SHAPE_LINES = 3,
-    GFX_DRAW_SHAPE_TRIANGLE_STRIP = 4,
-    GFX_DRAW_SHAPE_TRIANGLE_FAN = 5,
-    GFX_DRAW_SHAPE_TRIANGLES = 6,
-    GFX_DRAW_SHAPE_MAX_ENUM = 0x7f,
-} gfx_draw_shape_t;
-typedef enum gfx_index_type_t {
-    GFX_INDEX_TYPE_UINT8 = 0,
-    GFX_INDEX_TYPE_UINT16 = 1,
-    GFX_INDEX_TYPE_MAX_ENUM = 0x7f,
+
+
+
+
+
+gfx_result_t gfx_shader_associate_attributes_indices(gfx_shader_t shader_program, uint32_t* indices, const char** variable_names, size_t count) {
+    GLuint id = shader_program.program_id;
+    GLint i; GLsizei s; GLenum e; char* str; int len; gfx_result_t r;
+    
+    for(int i = 0; i < count; i++) {
+        uint32_t index = indices[i];
+        const char* name = variable_names[i];
+        
+#ifndef GFX_NO_CHECKS
+        if(index < 0 || index >= g_gl.limits.max_vertex_attributes) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+#endif
+#ifdef GFX_DEBUG
+        glGetVertexAttribiv(index+col, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != GL_TRUE) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+
+        g_gl.BindAttribLocation(id, index, name);
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+#ifdef GFX_DEBUG
+        i = g_gl.GetAttribLocation(id, name);
+        if(i != index) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        len = strlen(name);
+        str = calloc(len+1,1);
+        glGetActiveAttrib(id, index, len+1, &s, &i, &e, str);
+        /* size is always 1 since attributes can't be arrays */
+        if(s != len || strcmp(name, str) != 0 || i != 1) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_SIZE, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        switch(e) {
+        case GL_FLOAT:
+            if(i != 1) {
+                return GFX_ERROR_UNKNOWN;
+            }
+            break;
+        case GL_FLOAT_VEC2:
+            if(i != 2) {
+                return GFX_ERROR_UNKNOWN;
+            }
+            break;
+        case GL_FLOAT_VEC3:
+            if(i != 3) {
+                return GFX_ERROR_UNKNOWN;
+            }
+            break;
+        case GL_FLOAT_VEC4:
+            if(i != 4) {
+                return GFX_ERROR_UNKNOWN;
+            }
+            break;
+        case GL_FLOAT_MAT2:
+            if(i != 2) {
+                return GFX_ERROR_UNKNOWN;
+            }
+            break;
+        case GL_FLOAT_MAT3:
+            if(i != 3) {
+                return GFX_ERROR_UNKNOWN;
+            }
+            break;
+        case GL_FLOAT_MAT4:
+            if(i != 4) {
+                return GFX_ERROR_UNKNOWN;
+            }
+            break;
+        default:
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+    }
+    
+    r = gfx_shader_link_and_validate(id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+    
+    return GFX_OK;
 }
 
-typedef struct gfx_uniform_data_info_t {
-    const char* name;
-    gfx_uniform_data_type_t type;
-    size_t array_size; /* has to be 1 for non-arrays */
-    union {
-        bool32_t* bv;
-        int* iv;
-        float* fv;
-        gfx_texture_t* texture;
-        gfx_cubemap_t* cubemap;
-    } data;
-} gfx_uniform_data_info_t;
-typedef struct gfx_attribute_data_info_t {
-    const char* name;
-    gfx_attribute_data_type_t type;
-    gfx_vertex_buffer_t* buffer;
-    size_t offset, stride;
-} gfx_uniform_data_info_t;
-typedef struct gfx_draw_params_t {
-    gfx_uniform_data_info_t* uniforms;
-    size_t nr_uniforms;
-    gfx_attribute_data_info_t* attributes;
-    size_t nr_attributes;
-} gfx_draw_params_t;
+gfx_result_t gfx_vertex_attribute_index_alloc(uint32_t index, gfx_attribute_data_type_t type, gfx_vertex_buffer_t* buffer, uint32_t offset, uint32_t stride) {
+    int size_per_column, columns; void* p; GLint i;
+    
+#ifndef GFX_NO_CHECKS
+    if(buffer == NULL || index < 0 || index >= g_gl.limits.max_vertex_attributes) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+        
+    r = gfx_buffer_bind_safe(GL_ARRAY_BUFFER, 0, buffer[0].id);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+    switch(type) {
+    case GFX_UNIFORM_DATA_TYPE_FLOAT:
+        size_per_column = 1;
+        columns = 1;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_VEC2:
+        size_per_column = 2;
+        columns = 1;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_VEC3:
+        size_per_column = 3;
+        columns = 1;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_VEC4:
+        size_per_column = 4;
+        columns = 1;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_MAT2:
+        size_per_column = 2;
+        columns = 2;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_MAT3:
+        size_per_column = 3;
+        columns = 3;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_MAT4:
+        size_per_column = 4;
+        columns = 4;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+
+    for(int col = 0; col < columns; col++) {
+        g_gl.EnableVertexAttribArray(index+col);
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+
+#ifdef GFX_DEBUG
+        glGetVertexAttribiv(index+col, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != GL_TRUE) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+
+        g_gl.VertexAttribPointer(index+col, size_per_column, GL_FLOAT, GL_FALSE, stride, (void*)(offset + (sizeof(float)*col*size_per_column)));
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+
+#ifdef GFX_DEBUG
+        glGetVertexAttribiv(index+col, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != buffer[0].id) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        glGetVertexAttribiv(index+col, GL_VERTEX_ATTRIB_ARRAY_SIZE, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != size_per_column) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        glGetVertexAttribiv(index+col, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != stride) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        glGetVertexAttribiv(index+col, GL_VERTEX_ATTRIB_ARRAY_TYPE, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != GL_FLOAT) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        glGetVertexAttribiv(index+col, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != GL_FALSE) {
+            return GFX_ERROR_UNKNOWN;
+        }
+
+        g_gl.GetVertexAttribPointerv(index+col, GL_VERTEX_ATTRIB_ARRAY_POINTER, &p);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(p != (void*)(offset + (sizeof(float)*col*size_per_column))) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+    }
+
+    r = gfx_buffer_bind_safe(GL_ARRAY_BUFFER, buffer[0].id, 0);
+#ifndef GFX_NO_CHECKS
+    if(r != GFX_OK) { return r; }
+#endif
+
+    buffer[0].usages++;
+        
+    return GFX_OK;
+}
+gfx_result_t gfx_vertex_attribute_index_free(uint32_t index, gfx_attribute_data_type_t type) {
+    int columns;
+    
+#ifndef GFX_NO_CHECKS
+    if(index < 0 || index >= g_gl.limits.max_vertex_attributes) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+        
+    switch(type) {
+    case GFX_UNIFORM_DATA_TYPE_FLOAT:
+    case GFX_UNIFORM_DATA_TYPE_VEC2:
+    case GFX_UNIFORM_DATA_TYPE_VEC3:
+    case GFX_UNIFORM_DATA_TYPE_VEC4:
+        columns = 1;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_MAT2:
+        columns = 2;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_MAT3:
+        columns = 3;
+        break;
+    case GFX_UNIFORM_DATA_TYPE_MAT4:
+        columns = 4;
+        break;
+    default:
+        return GFX_ERROR_INVALID_PARAM;
+    }
+
+    for(int col = 0; col < columns; col++) {
+        g_gl.DisableVertexAttribArray(index+col);
+#ifndef GFX_NO_CHECKS
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+
+#ifdef GFX_DEBUG
+        glGetVertexAttribiv(index+col, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &i);
+        if(g_gl.GetError() != GL_NO_ERROR) {
+            return GFX_ERROR_UNKNOWN;
+        }
+        if(i != GL_FALSE) {
+            return GFX_ERROR_UNKNOWN;
+        }
+#endif
+    }
+    return GFX_OK;
+}
+
+static gfx_result_t gfx_switch_current_program_id(GLuint oldid, GLuint newid) {
+#ifdef GFX_DEBUG
+    GLint i;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != oldid) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    g_gl.UseProgram(newid);
+#ifndef GFX_NO_CHECKS
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_COULD_NOT_ACTIVATE_SHADER;
+    }
+#endif
+#ifdef GFX_DEBUG
+    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
+    if(g_gl.GetError() != GL_NO_ERROR) {
+        return GFX_ERROR_UNKNOWN;
+    }
+    if(i != newid) {
+        return GFX_ERROR_UNKNOWN;
+    }
+#endif
+    return GFX_OK;
+}
 
 
-gfx_result_t gfx_draw(gfx_shader_t shader_program, gfx_draw_params_t params, gfx_draw_shape_t shape, uint32_t first, uint32_t count);
-gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_params_t params, gfx_draw_shape_t shape, gfx_index_buffer_t* indices, gfx_index_type_t index_type, uint32_t offset, uint32_t count);
 
-
-
-GFX_ERROR_COULD_NOT_ACTIVATE_SHADER
-GFX_ERROR_UNIFORM_NOT_FOUND
-GFX_ERROR_NOT_ENOUGH_TEXTURE_UNITS
-
-
-
-static gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
+gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
     char* str; int len; GLsizei s; GLint i; GLenum e;
     gfx_result_t r;
     GLuint id = shader_program.program_id;
@@ -5695,6 +5932,16 @@ static gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_
     if(uniforms == NULL || nr_uniforms < 0) {
         return GFX_ERROR_INVALID_PARAM;
     }
+#endif
+    
+#ifdef GFX_DEBUG
+    r = gfx_shader_check(shader_program);
+    if(r != GFX_OK) { return r; }
+#endif
+
+    r = gfx_switch_current_program_id(0, shader_program.program_id);
+#ifdef GFX_DEBUG
+    if(r != GFX_OK) { return r; }
 #endif
     
     for(int i = 0; i < nr_uniforms; i++) {
@@ -6243,14 +6490,14 @@ static gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_
         }
     }
     
+    r = gfx_switch_current_program_id(shader_program.program_id, 0);
+#ifdef GFX_DEBUG
+    if(r != GFX_OK) { return r; }
+#endif
+
     return GFX_OK;
 }
-static gfx_result_t gfx_setup_attributes(gfx_shader_t shader_program, gfx_attribute_data_info_t* attributes, size_t nr_attributes) {
-    
-}
-
-
-static gfx_result_t gfx_cleanup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
+gfx_result_t gfx_cleanup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
     GLenum e;
     gfx_result_t r;
     int used_units_for_textures = 0, used_units_for_cubemaps = 0;
@@ -6334,12 +6581,9 @@ static gfx_result_t gfx_cleanup_uniforms(gfx_shader_t shader_program, gfx_unifor
     
     return GFX_OK;
 }
-static gfx_result_t gfx_cleanup_attributes(gfx_shader_t shader_program, gfx_attribute_data_info_t* attributes, size_t nr_attributes) {
-    // TODO: disable attribs
-    
-}
 
-static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw_params_t params, gfx_draw_shape_t shape, GLenum* mode) {
+
+static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw_shape_t shape, GLenum* mode) {
     gfx_result_t r; GLenum m; GLint i;
 
 #ifndef GFX_NO_CHECKS
@@ -6353,38 +6597,8 @@ static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw
     if(r != GFX_OK) { return r; }
 #endif
 
+    r = gfx_switch_current_program_id(0, shader_program.program_id);
 #ifdef GFX_DEBUG
-    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(i != 0) {
-        return GFX_ERROR_UNKNOWN;
-    }
-#endif
-    g_gl.UseProgram(shader_program.program_id);
-#ifndef GFX_NO_CHECKS
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_COULD_NOT_ACTIVATE_SHADER;
-    }
-#endif
-#ifdef GFX_DEBUG
-    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(i != shader_program.program_id) {
-        return GFX_ERROR_UNKNOWN;
-    }
-#endif
-
-    r = gfx_setup_uniforms(shader_program, params.uniforms, params.nr_uniforms);
-#ifndef GFX_NO_CHECKS
-    if(r != GFX_OK) { return r; }
-#endif
-
-    r = gfx_setup_attributes(shader_program, params.uniforms, params.nr_uniforms);
-#ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
 
@@ -6418,53 +6632,11 @@ static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw
 
     return GFX_OK;
 }
-static gfx_result_t gfx_draw_generic_cleanup(gfx_shader_t shader_program, gfx_draw_params_t params) {
-    gfx_result_t r; GLint i;
-    
-#ifdef GFX_DEBUG
-    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(i != shader_program.program_id) {
-        return GFX_ERROR_UNKNOWN;
-    }
-#endif
-    
-    r = gfx_cleanup_attributes(shader_program, params.uniforms, params.nr_uniforms);
-#ifndef GFX_NO_CHECKS
-    if(r != GFX_OK) { return r; }
-#endif
 
-    r = gfx_cleanup_uniforms(shader_program, params.uniforms, params.nr_uniforms);
-#ifndef GFX_NO_CHECKS
-    if(r != GFX_OK) { return r; }
-#endif
-
-    g_gl.UseProgram(0);
-#ifndef GFX_NO_CHECKS
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-#endif
-#ifdef GFX_DEBUG
-    glGetIntegerv(GL_CURRENT_PROGRAM, &i);
-    if(g_gl.GetError() != GL_NO_ERROR) {
-        return GFX_ERROR_UNKNOWN;
-    }
-    if(i != 0) {
-        return GFX_ERROR_UNKNOWN;
-    }
-#endif
-
-    return GFX_OK;
-}
-
-
-gfx_result_t gfx_draw(gfx_shader_t shader_program, gfx_draw_params_t params, gfx_draw_shape_t shape, uint32_t first, uint32_t count) {
+gfx_result_t gfx_draw(gfx_shader_t shader_program, gfx_draw_shape_t shape, uint32_t first, uint32_t count) {
     gfx_result_t r; GLenum mode;
     
-    r = gfx_draw_generic_setup(shader_program, params, shape, &mode);
+    r = gfx_draw_generic_setup(shader_program, shape, &mode);
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -6476,14 +6648,13 @@ gfx_result_t gfx_draw(gfx_shader_t shader_program, gfx_draw_params_t params, gfx
     }
 #endif
 
-    r = gfx_draw_generic_cleanup(shader_program, params);
-#ifndef GFX_NO_CHECKS
+    r = gfx_switch_current_program_id(shader_program.program_id, 0);
+#ifdef GFX_DEBUG
     if(r != GFX_OK) { return r; }
 #endif
-
     return GFX_OK;
 }
-gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_params_t params, gfx_draw_shape_t shape, gfx_index_buffer_t* indices, gfx_index_type_t index_type, uint32_t offset, uint32_t count) {
+gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_shape_t shape, gfx_index_buffer_t* indices, gfx_index_type_t index_type, uint32_t offset, uint32_t count) {
     gfx_result_t r; GLenum mode, index_type_enum;
     
 #ifndef GFX_NO_CHECKS
@@ -6503,7 +6674,7 @@ gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_params_t par
         return GFX_ERROR_INVALID_PARAM;
     }
     
-    r = gfx_draw_generic_setup(shader_program, params, shape, &mode);
+    r = gfx_draw_generic_setup(shader_program, shape, &mode);
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -6525,8 +6696,8 @@ gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_params_t par
     if(r != GFX_OK) { return r; }
 #endif
 
-    r = gfx_draw_generic_cleanup(shader_program, params);
-#ifndef GFX_NO_CHECKS
+    r = gfx_switch_current_program_id(shader_program.program_id, 0);
+#ifdef GFX_DEBUG
     if(r != GFX_OK) { return r; }
 #endif
 
@@ -6545,18 +6716,10 @@ open features: allow explicit override on other mipmap levels of textures?
 
  
    
-glGetActiveAttrib ,  , glGetAttribLocation , 
-
-glBindAttribLocation , glEnableVertexAttribArray , glDisableVertexAttribArray , , glVertexAttribPointer
- , glGetVertexAttribPointerv
 
 
 
-    
-
-
-
-
+glLinkProgram
 
 
 
@@ -6569,8 +6732,9 @@ glStencilMask because glStencilMaskSeparate
 glStencilOp because glStencilOpSeparate 
 
 glVertexAttrib[1|2|3|4]f[v]     because it'S effectively a uniform
-glGetVertexAttribfv, glGetVertexAttribiv    bc we dont use the setter
 
+
+GL_CURRENT_VERTEX_ATTRIB            4f      because it's unclear what the "current value" is for buffer pointer bindings
 
 these strings: can only really be used for a debug printout; glGetString might still be used to parse the shader language internally.
 GL_VENDOR                       1s       __CONSTANT__
