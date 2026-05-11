@@ -5912,7 +5912,7 @@ static gfx_result_t gfx_switch_current_program_id(GLuint oldid, GLuint newid) {
 
 
 
-gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
+gfx_result_t gfx_uniforms_setup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
     char* str; int len; GLsizei s; GLint i; GLenum e;
     gfx_result_t r;
     GLuint id = shader_program.program_id;
@@ -6497,7 +6497,7 @@ gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_in
 
     return GFX_OK;
 }
-gfx_result_t gfx_cleanup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
+gfx_result_t gfx_uniforms_cleanup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
     GLenum e;
     gfx_result_t r;
     int used_units_for_textures = 0, used_units_for_cubemaps = 0;

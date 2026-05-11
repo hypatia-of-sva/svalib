@@ -685,8 +685,8 @@ gfx_result_t gfx_vertex_attribute_index_alloc(uint32_t index, gfx_attribute_data
 gfx_result_t gfx_vertex_attribute_index_free(uint32_t index, gfx_attribute_data_type_t type);
 gfx_result_t gfx_shader_associate_attributes_indices(gfx_shader_t shader_program, uint32_t* indices, const char** variable_names, size_t count);
 
-gfx_result_t gfx_setup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
-gfx_result_t gfx_cleanup_uniforms(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
+gfx_result_t gfx_uniforms_setup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
+gfx_result_t gfx_uniforms_cleanup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
 
 gfx_result_t gfx_draw(gfx_shader_t shader_program, gfx_draw_shape_t shape, uint32_t first, uint32_t count);
 gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_shape_t shape, gfx_index_buffer_t* indices, gfx_index_type_t index_type, uint32_t offset, uint32_t count);
