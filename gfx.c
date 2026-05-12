@@ -3935,7 +3935,9 @@ static gfx_result_t gfx_buffer_create_generic(gfx_internal_buffer_type_t type, g
     }
 #endif
 
+#ifndef GFX_NO_UNBIND
     r = gfx_buffer_bind_safe(target, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -3996,7 +3998,9 @@ static gfx_result_t gfx_buffer_rewrite_generic(gfx_internal_buffer_type_t type, 
     }
 #endif
 
+#ifndef GFX_NO_UNBIND
     r = gfx_buffer_bind_safe(target, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -4606,7 +4610,9 @@ gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_confi
     if(r != GFX_OK) { return r; }
 #endif
     
+#ifndef GFX_NO_UNBIND
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -4677,7 +4683,9 @@ gfx_result_t gfx_texture_create_from_screen(gfx_screen_rect_t rect, gfx_texture_
     if(r != GFX_OK) { return r; }
 #endif
     
+#ifndef GFX_NO_UNBIND
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -4717,7 +4725,9 @@ gfx_result_t gfx_texture_rewrite(gfx_texture_t texture, gfx_texture_dimensions_t
     if(r != GFX_OK) { return r; }
 #endif
     
-    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+#ifndef GFX_NO_UNBIND
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, texture.id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -4745,7 +4755,9 @@ gfx_result_t gfx_texture_rewrite_from_screen(gfx_texture_t texture, gfx_texture_
     if(r != GFX_OK) { return r; }
 #endif
     
-    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, id, 0);
+#ifndef GFX_NO_UNBIND
+    r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_2D, texture.id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -4822,7 +4834,9 @@ gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_textur
     }
 #endif
     
+#ifndef GFX_NO_UNBIND
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -4963,7 +4977,9 @@ gfx_result_t gfx_cubemap_add_face(gfx_cubemap_t* cubemap, gfx_cubemap_facetype_t
         }
     }
 
+#ifndef GFX_NO_UNBIND
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -5065,7 +5081,9 @@ gfx_result_t gfx_cubemap_add_face_from_screen(gfx_cubemap_t* cubemap, gfx_cubema
         }
     }
 
+#ifndef GFX_NO_UNBIND
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -5140,8 +5158,10 @@ gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetyp
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
-    
+
+#ifndef GFX_NO_UNBIND
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -5207,8 +5227,10 @@ gfx_result_t gfx_cubemap_rewrite_face_from_screen(gfx_cubemap_t cubemap, gfx_cub
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
-    
+
+#ifndef GFX_NO_UNBIND
     r = gfx_texture_bind_safe(GL_TEXTURE0, GL_TEXTURE_CUBE_MAP, id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -5612,6 +5634,21 @@ gfx_result_t gfx_shader_associate_attributes_indices(gfx_shader_t shader_program
     GLuint id = shader_program.program_id;
     GLint i; GLsizei s; GLenum e; char* str; int len; gfx_result_t r;
     
+    if(count == 0) {
+#ifndef GFX_NO_CHECKS
+        if(indices != NULL || variable_names != NULL) {
+            return GFX_ERROR_INVALID_PARAM;
+        }
+#endif
+        return GFX_OK;
+    }
+    
+#ifndef GFX_NO_CHECKS
+    if(indices == NULL || variable_names == NULL || count < 0) {
+        return GFX_ERROR_INVALID_PARAM;
+    }
+#endif
+
     for(int i = 0; i < count; i++) {
         uint32_t index = indices[i];
         const char* name = variable_names[i];
@@ -5718,31 +5755,31 @@ gfx_result_t gfx_vertex_attribute_index_alloc(uint32_t index, gfx_attribute_data
 #endif
 
     switch(type) {
-    case GFX_UNIFORM_DATA_TYPE_FLOAT:
+    case GFX_ATTRIBUTE_DATA_TYPE_FLOAT:
         size_per_column = 1;
         columns = 1;
         break;
-    case GFX_UNIFORM_DATA_TYPE_VEC2:
+    case GFX_ATTRIBUTE_DATA_TYPE_VEC2:
         size_per_column = 2;
         columns = 1;
         break;
-    case GFX_UNIFORM_DATA_TYPE_VEC3:
+    case GFX_ATTRIBUTE_DATA_TYPE_VEC3:
         size_per_column = 3;
         columns = 1;
         break;
-    case GFX_UNIFORM_DATA_TYPE_VEC4:
+    case GFX_ATTRIBUTE_DATA_TYPE_VEC4:
         size_per_column = 4;
         columns = 1;
         break;
-    case GFX_UNIFORM_DATA_TYPE_MAT2:
+    case GFX_ATTRIBUTE_DATA_TYPE_MAT2:
         size_per_column = 2;
         columns = 2;
         break;
-    case GFX_UNIFORM_DATA_TYPE_MAT3:
+    case GFX_ATTRIBUTE_DATA_TYPE_MAT3:
         size_per_column = 3;
         columns = 3;
         break;
-    case GFX_UNIFORM_DATA_TYPE_MAT4:
+    case GFX_ATTRIBUTE_DATA_TYPE_MAT4:
         size_per_column = 4;
         columns = 4;
         break;
@@ -5822,7 +5859,9 @@ gfx_result_t gfx_vertex_attribute_index_alloc(uint32_t index, gfx_attribute_data
 #endif
     }
 
+#ifndef GFX_NO_UNBIND
     r = gfx_buffer_bind_safe(GL_ARRAY_BUFFER, buffer[0].id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
@@ -5841,19 +5880,19 @@ gfx_result_t gfx_vertex_attribute_index_free(uint32_t index, gfx_attribute_data_
 #endif
         
     switch(type) {
-    case GFX_UNIFORM_DATA_TYPE_FLOAT:
-    case GFX_UNIFORM_DATA_TYPE_VEC2:
-    case GFX_UNIFORM_DATA_TYPE_VEC3:
-    case GFX_UNIFORM_DATA_TYPE_VEC4:
+    case GFX_ATTRIBUTE_DATA_TYPE_FLOAT:
+    case GFX_ATTRIBUTE_DATA_TYPE_VEC2:
+    case GFX_ATTRIBUTE_DATA_TYPE_VEC3:
+    case GFX_ATTRIBUTE_DATA_TYPE_VEC4:
         columns = 1;
         break;
-    case GFX_UNIFORM_DATA_TYPE_MAT2:
+    case GFX_ATTRIBUTE_DATA_TYPE_MAT2:
         columns = 2;
         break;
-    case GFX_UNIFORM_DATA_TYPE_MAT3:
+    case GFX_ATTRIBUTE_DATA_TYPE_MAT3:
         columns = 3;
         break;
-    case GFX_UNIFORM_DATA_TYPE_MAT4:
+    case GFX_ATTRIBUTE_DATA_TYPE_MAT4:
         columns = 4;
         break;
     default:
@@ -6490,7 +6529,9 @@ gfx_result_t gfx_uniforms_setup(gfx_shader_t shader_program, gfx_uniform_data_in
         }
     }
     
+#ifndef GFX_NO_UNBIND
     r = gfx_switch_current_program_id(shader_program.program_id, 0);
+#endif
 #ifdef GFX_DEBUG
     if(r != GFX_OK) { return r; }
 #endif
@@ -6517,6 +6558,7 @@ gfx_result_t gfx_uniforms_cleanup(gfx_shader_t shader_program, gfx_uniform_data_
     }
 #endif
     
+#ifndef GFX_NO_UNBIND
     for(int i = 0; i < nr_uniforms; i++) {
         switch(uniforms[i].type) {
         case GFX_UNIFORM_DATA_TYPE_INT:
@@ -6578,6 +6620,7 @@ gfx_result_t gfx_uniforms_cleanup(gfx_shader_t shader_program, gfx_uniform_data_
             return GFX_ERROR_INVALID_PARAM;
         }
     }
+#endif
     
     return GFX_OK;
 }
@@ -6648,7 +6691,9 @@ gfx_result_t gfx_draw(gfx_shader_t shader_program, gfx_draw_shape_t shape, uint3
     }
 #endif
 
+#ifndef GFX_NO_UNBIND
     r = gfx_switch_current_program_id(shader_program.program_id, 0);
+#endif
 #ifdef GFX_DEBUG
     if(r != GFX_OK) { return r; }
 #endif
@@ -6691,12 +6736,16 @@ gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_shape_t shap
     }
 #endif
 
+#ifndef GFX_NO_UNBIND
     r = gfx_buffer_bind_safe(GL_ELEMENT_ARRAY_BUFFER, indices[0].id, 0);
+#endif
 #ifndef GFX_NO_CHECKS
     if(r != GFX_OK) { return r; }
 #endif
 
+#ifndef GFX_NO_UNBIND
     r = gfx_switch_current_program_id(shader_program.program_id, 0);
+#endif
 #ifdef GFX_DEBUG
     if(r != GFX_OK) { return r; }
 #endif

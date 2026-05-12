@@ -16,6 +16,7 @@
 #define GFX_NO_CHECKS
 #endif
 
+/* This macro turns off all unbinding/unloading of textures/buffers/shader programs; use only together with GFX_NO_CHECKS and GFX_DEBUG turnt off */
 #if 0
 #define GFX_NO_UNBIND
 #endif
@@ -383,17 +384,17 @@ typedef enum gfx_uniform_data_type_t {
     GFX_UNIFORM_DATA_TYPE_SAMPLER_2D = 15,
     GFX_UNIFORM_DATA_TYPE_SAMPLER_CUBE_MAP = 16,
     GFX_UNIFORM_DATA_TYPE_MAX_ENUM = 0x7f
-} gfx_uniform_data_type_t
+} gfx_uniform_data_type_t;
 typedef enum gfx_attribute_data_type_t {
-    GFX_UNIFORM_DATA_TYPE_FLOAT = 1,
-    GFX_UNIFORM_DATA_TYPE_VEC2 = 2,
-    GFX_UNIFORM_DATA_TYPE_VEC3 = 3,
-    GFX_UNIFORM_DATA_TYPE_VEC4 = 4,
-    GFX_UNIFORM_DATA_TYPE_MAT2 = 5,
-    GFX_UNIFORM_DATA_TYPE_MAT3 = 6,
-    GFX_UNIFORM_DATA_TYPE_MAT4 = 7,
-    GFX_UNIFORM_DATA_TYPE_MAX_ENUM = 0x7f
-} gfx_attribute_data_type_t
+    GFX_ATTRIBUTE_DATA_TYPE_FLOAT = 1,
+    GFX_ATTRIBUTE_DATA_TYPE_VEC2 = 2,
+    GFX_ATTRIBUTE_DATA_TYPE_VEC3 = 3,
+    GFX_ATTRIBUTE_DATA_TYPE_VEC4 = 4,
+    GFX_ATTRIBUTE_DATA_TYPE_MAT2 = 5,
+    GFX_ATTRIBUTE_DATA_TYPE_MAT3 = 6,
+    GFX_ATTRIBUTE_DATA_TYPE_MAT4 = 7,
+    GFX_ATTRIBUTE_DATA_TYPE_MAX_ENUM = 0x7f
+} gfx_attribute_data_type_t;
 typedef enum gfx_draw_shape_t {
     GFX_DRAW_SHAPE_POINTS = 0,
     GFX_DRAW_SHAPE_LINE_STRIP = 1,
@@ -408,7 +409,7 @@ typedef enum gfx_index_type_t {
     GFX_INDEX_TYPE_UINT8 = 0,
     GFX_INDEX_TYPE_UINT16 = 1,
     GFX_INDEX_TYPE_MAX_ENUM = 0x7f,
-}
+} gfx_index_type_t;
 
 typedef struct gfx_event_t {
     gfx_event_type_t type;
@@ -679,14 +680,13 @@ gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
 gfx_result_t gfx_shader_create(const char* vertex_shader_source, const char* fragment_shader_source, gfx_shader_t* shader);
 gfx_result_t gfx_shader_destroy(gfx_shader_t shader);
 
+gfx_result_t gfx_uniforms_setup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
+gfx_result_t gfx_uniforms_cleanup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
 
         /* matrix types allocate consecutive indices per column, that's why you need the type in the freeing function */
 gfx_result_t gfx_vertex_attribute_index_alloc(uint32_t index, gfx_attribute_data_type_t type, gfx_vertex_buffer_t* buffer, uint32_t offset, uint32_t stride);
 gfx_result_t gfx_vertex_attribute_index_free(uint32_t index, gfx_attribute_data_type_t type);
 gfx_result_t gfx_shader_associate_attributes_indices(gfx_shader_t shader_program, uint32_t* indices, const char** variable_names, size_t count);
-
-gfx_result_t gfx_uniforms_setup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
-gfx_result_t gfx_uniforms_cleanup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
 
 gfx_result_t gfx_draw(gfx_shader_t shader_program, gfx_draw_shape_t shape, uint32_t first, uint32_t count);
 gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_shape_t shape, gfx_index_buffer_t* indices, gfx_index_type_t index_type, uint32_t offset, uint32_t count);
