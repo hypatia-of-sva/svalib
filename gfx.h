@@ -658,15 +658,14 @@ gfx_result_t gfx_index_buffer_rewrite(gfx_index_buffer_t buffer, size_t offset, 
 gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer);
 
 
-
+/* texture creation automatically creates mipmaps, the data given will be written to the base (level 0) mipmap */
 gfx_result_t gfx_texture_create(gfx_texture_image_data_t data, gfx_texture_config_t config, gfx_texture_t* texture);
 gfx_result_t gfx_texture_create_from_screen(gfx_screen_rect_t rect, gfx_texture_image_data_format_t format. gfx_texture_config_t config, gfx_texture_t* texture);
 gfx_result_t gfx_texture_rewrite(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_texture_image_data_t data);
 gfx_result_t gfx_texture_rewrite_from_screen(gfx_texture_t texture, gfx_texture_dimensions_t offset_rect, gfx_screen_rect_t rect);
 gfx_result_t gfx_texture_destroy(gfx_texture_t texture);
 
-
-        /* if any of the pointers are NULL, then that face will not be created */
+/* if any of the pointers are NULL, then that face will not be created */
 gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_texture_image_data_t* x_neg_data,
                                 gfx_texture_image_data_t* y_pos_data, gfx_texture_image_data_t* y_neg_data,
                                 gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap);
@@ -676,14 +675,15 @@ gfx_result_t gfx_cubemap_rewrite_face(gfx_cubemap_t cubemap, gfx_cubemap_facetyp
 gfx_result_t gfx_cubemap_rewrite_face_from_screen(gfx_cubemap_t cubemap, gfx_cubemap_facetype_t face, gfx_texture_dimensions_t offset_rect. gfx_screen_rect_t rect);
 gfx_result_t gfx_cubemap_destroy(gfx_cubemap_t cubemap);
 
-        /* the shade source should _not_ include the #version line, that will be added in depending on GL version. In terms of version, use GL2 1.10 / GLES2 1.00 GLSL features. */
+
+/* the shade source should _not_ include the #version line, that will be added in depending on GL version. In terms of version, use GL2 1.10 / GLES2 1.00 GLSL features. */
 gfx_result_t gfx_shader_create(const char* vertex_shader_source, const char* fragment_shader_source, gfx_shader_t* shader);
 gfx_result_t gfx_shader_destroy(gfx_shader_t shader);
 
 gfx_result_t gfx_uniforms_setup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
 gfx_result_t gfx_uniforms_cleanup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms);
 
-        /* matrix types allocate consecutive indices per column, that's why you need the type in the freeing function */
+/* matrix types allocate consecutive indices per column, that's why you need the type in the freeing function */
 gfx_result_t gfx_vertex_attribute_index_alloc(uint32_t index, gfx_attribute_data_type_t type, gfx_vertex_buffer_t* buffer, uint32_t offset, uint32_t stride);
 gfx_result_t gfx_vertex_attribute_index_free(uint32_t index, gfx_attribute_data_type_t type);
 gfx_result_t gfx_shader_associate_attributes_indices(gfx_shader_t shader_program, uint32_t* indices, const char** variable_names, size_t count);

@@ -8,7 +8,7 @@
 
 
 /* internal Event queue: */
-struct g_events {
+static struct g_events {
     gfx_event_t *data, *old_data;
     int size, capacity, base;
     mtx_t write_lock;
@@ -16,7 +16,7 @@ struct g_events {
 #define INITIAL_EQ_SIZE                           1024
 #define MAX_EQ_SIZE                               (1<<24)
 #define MAX_PROPORTION_OF_OLD_DATA_BEFORE_CLEANUP 0.5
-void init_event_queue(void) {
+static void init_event_queue(void) {
     g_events.data = calloc(sizeof(gfx_event_t), INITIAL_EQ_SIZE);
     g_events.old_data = NULL;
     g_events.capacity = INITIAL_EQ_SIZE;
@@ -24,7 +24,7 @@ void init_event_queue(void) {
     g_events.base = 0;
     assert(mtx_init(&g_events.write_lock, mtx_plain) == thrd_success);
 }
-void destroy_event_queue(void) {
+static void destroy_event_queue(void) {
     if(g_events.old_data != NULL && g_events.old_data != g_events.data) {
         free(g_events.old_data);
     }
@@ -32,7 +32,7 @@ void destroy_event_queue(void) {
     mtx_destroy(&g_events.write_lock);
     memset(g_events, 0, sizeof(g_events));
 }
-void cleanup_event_queue(void) {
+static void cleanup_event_queue(void) {
     assert(mtx_lock(&g_events.write_lock) == thrd_success);
     
     if(g_events.old_data != NULL && g_events.old_data != g_events.data) {
@@ -48,7 +48,7 @@ void cleanup_event_queue(void) {
     
     assert(mtx_unlock(&g_events.write_lock) == thrd_success);
 }
-void add_event(gfx_event_t e) {
+static void add_event(gfx_event_t e) {
     assert(mtx_lock(&g_events.write_lock) == thrd_success);
     
     assert(g_events.data != NULL);
@@ -75,7 +75,7 @@ void add_event(gfx_event_t e) {
     
     assert(mtx_unlock(&g_events.write_lock) == thrd_success);
 }
-void poll_events(int *nr_input_events, const gfx_event_t** events) {
+static void poll_events(int *nr_input_events, const gfx_event_t** events) {
     assert(nr_input_events != NULL && event != NULL);
     
     /* must be called _before_ locking since it also locks the mutex */
@@ -96,7 +96,7 @@ void poll_events(int *nr_input_events, const gfx_event_t** events) {
 
 /* internal GLFW utils: */
 #define GFX_MAX_JOYSTICK_COUNT GLFW_JOYSTICK_LAST+1
-struct g_glfw {
+static struct g_glfw {
     int monitor_count, monitor_capacity;
     GLFWmonitor** monitors;
     gfx_monitor_info_t *monitor_infos, *old_monitor_infos;
@@ -113,27 +113,27 @@ struct g_glfw {
     
     GLFWcursor* used_cursor;
 } g_glfw;
-void* glfw_allocate(size_t size, void* user) {
+static void* glfw_allocate(size_t size, void* user) {
     void* ptr = malloc(size);
 #ifdef GFX_DEBUG
     fprintf(stderr, "GLFW allocation of %li bytes to %p (user = %p)", size, ptr, user);
 #endif
     return ptr
 }
-void* glfw_reallocate(void* block, size_t size, void* user) {
+static void* glfw_reallocate(void* block, size_t size, void* user) {
     void *ptr = realloc(block, size);
 #ifdef GFX_DEBUG
     fprintf(stderr, "GLFW reallocation of %li bytes at %p to %p (user = %p)", size, block, ptr, user);
 #endif
     return ptr
 }
-void glfw_deallocate(void* block, void* user) {
+static void glfw_deallocate(void* block, void* user) {
 #ifdef GFX_DEBUG
     fprintf(stderr, "GLFW deallocation at %p (user = %p)", block, user);
 #endif
     free(block);
 }
-gfx_monitor_info_t get_info_from_glfw_handle(GLFWmonitor* m) {
+static gfx_monitor_info_t get_info_from_glfw_handle(GLFWmonitor* m) {
     gfx_monitor_info_t info;
     
     info.connected = true;
@@ -175,7 +175,7 @@ gfx_monitor_info_t get_info_from_glfw_handle(GLFWmonitor* m) {
     
     return info;
 }
-void update_glfw_joystick_info(int jid) {
+static void update_glfw_joystick_info(int jid) {
     if(glfwJoystickPresent(jid) == GLFW_TRUE) {
 #ifndef GFX_NO_CHECKS
         assert(!glfwGetError(NULL));
@@ -202,7 +202,7 @@ void update_glfw_joystick_info(int jid) {
 #endif
     }
 }
-void update_glfw_joystick_state(int jid) {
+static void update_glfw_joystick_state(int jid) {
     if(g_glfw.joystick_infos[jid].connected) {
         int button_count, hat_count, axis_count;
         assert(glfwJoystickPresent(jid) == GLFW_TRUE);
@@ -243,7 +243,7 @@ void update_glfw_joystick_state(int jid) {
         }
     }
 }
-void update_glfw_gamepad_state(int jid) {
+static void update_glfw_gamepad_state(int jid) {
     if(g_glfw.joystick_infos[jid].connected && g_glfw.joystick_infos[jid].is_gamepad) {
         assert(glfwJoystickPresent(jid) == GLFW_TRUE);
 #ifndef GFX_NO_CHECKS
@@ -270,7 +270,7 @@ void update_glfw_gamepad_state(int jid) {
     }
 }
 /* every GLFW callback _except_ the error callback (and the deprecated charmods) will write to the queue */
-void glfw_monitor(GLFWmonitor* monitor, int event) {
+static void glfw_monitor            (GLFWmonitor* monitor, int event) {
     gfx_event_t e;
     int index;
     switch(event) {
@@ -327,7 +327,7 @@ void glfw_monitor(GLFWmonitor* monitor, int event) {
     e.value.id = index;
     add_event(e);
 }
-void glfw_joystick(int jid, int event) {
+static void glfw_joystick           (int jid, int event) {
     gfx_event_t e;
     switch(event) {
         case GLFW_CONNECTED:
@@ -345,7 +345,7 @@ void glfw_joystick(int jid, int event) {
     add_event(e);
     
 }
-void glfw_windowpos       (GLFWwindow* window, int xpos, int ypos) {
+static void glfw_windowpos          (GLFWwindow* window, int xpos, int ypos) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_WINDOW_MOVE;
@@ -353,7 +353,7 @@ void glfw_windowpos       (GLFWwindow* window, int xpos, int ypos) {
     e.value.ivec2.y = ypos;
     add_event(e);
 }
-void glfw_windowsize      (GLFWwindow* window, int width, int height) {
+static void glfw_windowsize         (GLFWwindow* window, int width, int height) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_WINDOW_RESIZE;
@@ -361,19 +361,19 @@ void glfw_windowsize      (GLFWwindow* window, int width, int height) {
     e.value.ivec2.y = height;
     add_event(e);
 }
-void glfw_windowclose     (GLFWwindow* window) {
+static void glfw_windowclose        (GLFWwindow* window) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_WINDOW_CLOSE;
     add_event(e);
 }
-void glfw_windowrefresh   (GLFWwindow* window) {
+static void glfw_windowrefresh      (GLFWwindow* window) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_WINDOW_CONTENT_REFRESH;
     add_event(e);
 }
-void glfw_windowfocus     (GLFWwindow* window, int focused) {
+static void glfw_windowfocus        (GLFWwindow* window, int focused) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     switch(focused) {
@@ -388,7 +388,7 @@ void glfw_windowfocus     (GLFWwindow* window, int focused) {
     }
     add_event(e);
 }
-void glfw_windowiconify   (GLFWwindow* window, int iconified) {
+static void glfw_windowiconify      (GLFWwindow* window, int iconified) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     switch(iconified) {
@@ -403,7 +403,7 @@ void glfw_windowiconify   (GLFWwindow* window, int iconified) {
     }
     add_event(e);
 }
-void glfw_windowmaximize  (GLFWwindow* window, int maximized) {
+static void glfw_windowmaximize     (GLFWwindow* window, int maximized) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     switch(maximized) {
@@ -418,7 +418,7 @@ void glfw_windowmaximize  (GLFWwindow* window, int maximized) {
     }
     add_event(e);
 }
-void glfw_framebuffersize (GLFWwindow* window, int width, int height) {
+static void glfw_framebuffersize    (GLFWwindow* window, int width, int height) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_FRAMEBUFFER_RESIZED;
@@ -426,7 +426,7 @@ void glfw_framebuffersize (GLFWwindow* window, int width, int height) {
     e.value.ivec2.y = height;
     add_event(e);
 }
-void glfw_windowcontentscale    (GLFWwindow* window, float xscale, float yscale) {
+static void glfw_windowcontentscale (GLFWwindow* window, float xscale, float yscale) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_WINDOW_CONTENT_SCALE_CHANGED;
@@ -434,7 +434,7 @@ void glfw_windowcontentscale    (GLFWwindow* window, float xscale, float yscale)
     e.value.fvec2.y = yscale;
     add_event(e);
 }
-void glfw_key         (GLFWwindow* window, int key, int scancode, int action, int mods) {
+static void glfw_key                (GLFWwindow* window, int key, int scancode, int action, int mods) {
     assert(window == g_glfw.window);
     /* we ignore the scancode as it is platform dependent */
     gfx_event_t e;
@@ -455,14 +455,14 @@ void glfw_key         (GLFWwindow* window, int key, int scancode, int action, in
     e.value.keypress.mods = mods;
     add_event(e);
 }
-void glfw_char            (GLFWwindow* window, unsigned int codepoint) {
+static void glfw_char               (GLFWwindow* window, unsigned int codepoint) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_UNICODE_CHAR_INPUT;
     e.value.unicode_codepoint = codepoint;
     add_event(e);
 }
-void glfw_mousebutton     (GLFWwindow* window, int button, int action, int mods) {
+static void glfw_mousebutton        (GLFWwindow* window, int button, int action, int mods) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     switch(action) {
@@ -480,7 +480,7 @@ void glfw_mousebutton     (GLFWwindow* window, int button, int action, int mods)
     add_event(e);
     
 }
-void glfw_cursorpos       (GLFWwindow* window, double xpos, double ypos) {
+static void glfw_cursorpos          (GLFWwindow* window, double xpos, double ypos) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_MOUSE_MOVE;
@@ -488,7 +488,7 @@ void glfw_cursorpos       (GLFWwindow* window, double xpos, double ypos) {
     e.value.dvec2.y = ypos;
     add_event(e);
 }
-void glfw_cursorenter     (GLFWwindow* window, int entered) {
+static void glfw_cursorenter        (GLFWwindow* window, int entered) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     switch(entered) {
@@ -503,7 +503,7 @@ void glfw_cursorenter     (GLFWwindow* window, int entered) {
     }
     add_event(e);
 }
-void glfw_scroll          (GLFWwindow* window, double xoffset, double yoffset) {
+static void glfw_scroll             (GLFWwindow* window, double xoffset, double yoffset) {
     assert(window == g_glfw.window);
     gfx_event_t e;
     e.type = GFX_EVENT_SCROLL;
@@ -511,7 +511,7 @@ void glfw_scroll          (GLFWwindow* window, double xoffset, double yoffset) {
     e.value.dvec2.y = yoffset;
     add_event(e);
 }
-void glfw_drop            (GLFWwindow* window, int path_count, const char* paths[]) {
+static void glfw_drop               (GLFWwindow* window, int path_count, const char* paths[]) {
     assert(window == g_glfw.window);
     if(g_glfw.num_paths + path_count > g_glfw.paths_cap) {
         g_glfw.paths_cap = min(g_glfw.paths_cap*2, 1024);
@@ -546,7 +546,7 @@ and functions already covered by the callbacks like glfwGetKey
 */
 
 /* internal GL utils: */
-struct g_gl {
+static struct g_gl {
     bool                                initialized;
     enum { GLES2, GL3Core, GL2}         version;
     gfx_fixed_function_state_t          state;
@@ -681,7 +681,7 @@ struct g_gl {
     PFNGLVERTEXATTRIBPOINTERPROC        VertexAttribPointer;
     PFNGLVIEWPORTPROC                   Viewport;
 } g_gl;
-void load_gl(void) {
+static void load_gl(void) {
     /* We don't do error checking here since not available functions will just become NULL pointers */
     g_gl.ActiveTexture                  = (PFNGLACTIVETEXTUREPROC             ) glfwGetProcAddress("glActiveTexture");
     g_gl.AttachShader                   = (PFNGLBINDATTRIBLOCATIONPROC        ) glfwGetProcAddress("glAttachShader");
@@ -811,7 +811,7 @@ void load_gl(void) {
     g_gl.VertexAttribPointer            = (PFNGLVERTEXATTRIBPOINTERPROC       ) glfwGetProcAddress("glVertexAttribPointer");
     g_gl.Viewport                       = (PFNGLVIEWPORTPROC                  ) glfwGetProcAddress("glViewport");
 }
-gfx_fixed_function_state_t default_state(int width, int height) {
+static gfx_fixed_function_state_t default_state(int width, int height) {
     gfx_fixed_function_state_t s;
     s.blend.enabled = false;
     s.blend.color.r = 0;
@@ -882,7 +882,7 @@ gfx_fixed_function_state_t default_state(int width, int height) {
     s.viewport.height = height;
     return s;
 }
-bool load_or_check_limits(void) {
+static bool load_or_check_limits(void) {
     gfx_driver_limits_t limits;
     g_gl.GetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, &limits.line_width);
 #ifndef GFX_NO_CHECKS
@@ -958,7 +958,7 @@ bool load_or_check_limits(void) {
         return true;
     }
 }
-bool check_params(gfx_fixed_function_state_t state) {
+static bool check_params(gfx_fixed_function_state_t state) {
 #ifndef GFX_NO_CHECKS
     /* TODO: Is there any way to request the current value of glFrontFace ? 
         also: is GL_SCISSOR_BOX or GL_VIEWPORT with integer an issue?
@@ -2641,11 +2641,6 @@ gfx_result_t gfx_clipboard_set(const char* string) {
     return GFX_OK;
 }
 
-
-
-
-
-
 gfx_result_t gfx_timestamp_frequency(uint64_t* frequency_in_hz) {
     uint64_t val
 #ifndef GFX_NO_CHECKS
@@ -2678,8 +2673,6 @@ gfx_result_t gfx_timestamp(uint64_t* ticks) {
     ticks[0] = val;
     return GFX_OK;
 }
-
-
 
 gfx_result_t gfx_params_get(gfx_fixed_function_state_t* state) {
     assert(state != NULL);
@@ -3749,10 +3742,6 @@ gfx_result_t gfx_params_reset(void) {
     return gfx_params_set(default_state(fb_width, fb_height));
 }
 
-
-
-
-
 gfx_result_t gfx_render(void) {
     g_gl.Flush(); /* This might be unnecessary but we keep it in just in case */
     
@@ -3765,7 +3754,6 @@ gfx_result_t gfx_render(void) {
     
     return GFX_OK;
 }
-
 gfx_result_t gfx_clear(void) {
     GLbitfield mask = 0;
     if(g_gl.state.clear.color_enabled) {
@@ -3786,8 +3774,6 @@ gfx_result_t gfx_clear(void) {
     
     return GFX_OK;
 }
-
-
 gfx_result_t gfx_screenshot(gfx_image_data_rgba_t* img) {
 #ifndef GFX_NO_CHECKS
     assert(img != NULL);
@@ -3806,7 +3792,6 @@ gfx_result_t gfx_screenshot(gfx_image_data_rgba_t* img) {
     
     return GFX_OK;
 }
-
 gfx_result_t gfx_driver_limits(const gfx_driver_limits_t** limits) {
 #ifndef GFX_NO_CHECKS
     assert(limits != NULL);
@@ -3819,11 +3804,6 @@ gfx_result_t gfx_driver_limits(const gfx_driver_limits_t** limits) {
     
     return GFX_OK;
 }
-
-
-
-
-
 
 typedef enum gfx_internal_buffer_type_t {
     GFX_BUFFER_TYPE_VERTEX_DATA_BUFFER = 0,
@@ -4027,7 +4007,6 @@ static gfx_result_t gfx_buffer_destroy_generic(GLuint id) {
     return GFX_OK;
 }
 
-
 gfx_result_t gfx_vertex_buffer_create(gfx_buffer_usage_t usage, size_t size, void* ptr, gfx_vertex_buffer_t* buffer) {
     assert(buffer != NULL);
     buffer[0].usage = usage;
@@ -4053,9 +4032,6 @@ gfx_result_t gfx_index_buffer_rewrite(gfx_index_buffer_t buffer, size_t offset, 
 gfx_result_t gfx_index_buffer_destroy(gfx_index_buffer_t buffer) {
     return gfx_buffer_destroy_generic(buffer.id);
 }
-
-
-
 
 
 static gfx_result_t gfx_texture_bind_safe(GLenum texture_unit, GLenum target, GLuint old_id, GLuint new_id) {
@@ -4768,7 +4744,6 @@ gfx_result_t gfx_texture_destroy(gfx_texture_t texture) {
     return gfx_texture_destroy_generic(texture.id);
 }
 
-
 gfx_result_t gfx_cubemap_create(gfx_texture_image_data_t* x_pos_data, gfx_texture_image_data_t* x_neg_data,
                                 gfx_texture_image_data_t* y_pos_data, gfx_texture_image_data_t* y_neg_data,
                                 gfx_texture_image_data_t* z_pos_data, gfx_texture_image_data_t* z_neg_data, gfx_cubemap_config_t config, gfx_cubemap_t* cubemap) {
@@ -5458,15 +5433,15 @@ static gfx_result_t gfx_shader_link_and_validate(GLuint program_id) {
 }
 
 
-const char* GL_prefix = "#version 110\n";
-const char* GLES_vertex_prefix = "#version 100\n";
-const char* GLES_fragment_prefix =  "#version 100\n"
-                                    "#if GL_FRAGMENT_PRECISION_HIGH\n"
-                                    "precision highp int;\n"
-                                    "precision highp float;\n"
-                                    "#else\n"
-                                    "precision mediump float;\n"
-                                    "#endif\n";
+static const char* GL_prefix = "#version 110\n";
+static const char* GLES_vertex_prefix = "#version 100\n";
+static const char* GLES_fragment_prefix = "#version 100\n"
+                                          "#if GL_FRAGMENT_PRECISION_HIGH\n"
+                                          "precision highp int;\n"
+                                          "precision highp float;\n"
+                                          "#else\n"
+                                          "precision mediump float;\n"
+                                          "#endif\n";
 
 gfx_result_t gfx_shader_create(const char* vertex_shader_source_versionless, const char* fragment_shader_source_versionless;, gfx_shader_t* shader) {
     GLuint vertex_id, fragment_id, program_id;
@@ -5621,14 +5596,6 @@ gfx_result_t gfx_shader_destroy(gfx_shader_t shader) {
     
     return GFX_OK;
 }
-
-
-
-
-
-
-
-
 
 gfx_result_t gfx_shader_associate_attributes_indices(gfx_shader_t shader_program, uint32_t* indices, const char** variable_names, size_t count) {
     GLuint id = shader_program.program_id;
@@ -5948,8 +5915,6 @@ static gfx_result_t gfx_switch_current_program_id(GLuint oldid, GLuint newid) {
 #endif
     return GFX_OK;
 }
-
-
 
 gfx_result_t gfx_uniforms_setup(gfx_shader_t shader_program, gfx_uniform_data_info_t* uniforms, size_t nr_uniforms) {
     char* str; int len; GLsizei s; GLint i; GLenum e;
@@ -6625,7 +6590,6 @@ gfx_result_t gfx_uniforms_cleanup(gfx_shader_t shader_program, gfx_uniform_data_
     return GFX_OK;
 }
 
-
 static gfx_result_t gfx_draw_generic_setup(gfx_shader_t shader_program, gfx_draw_shape_t shape, GLenum* mode) {
     gfx_result_t r; GLenum m; GLint i;
 
@@ -6760,16 +6724,6 @@ gfx_result_t gfx_draw_indexed(gfx_shader_t shader_program, gfx_draw_shape_t shap
 /* unused GL functions and variables:
 
 open features: allow explicit override on other mipmap levels of textures?
-
-
-
- 
-   
-
-
-
-glLinkProgram
-
 
 
 
