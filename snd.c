@@ -2,8 +2,8 @@
 
 #define AL_NO_PROTOTYPES
 #define ALC_NO_PROTOTYPES
-#include <AL/alext.h>
-#include <AL/efx-presets.h>
+#include <AL/al.h>
+#include <AL/alc.h>
 
 /* Function loading facilities from alad: modelled after GLFW 3.3, see win32_module.c and posix_module.c specifically */
 #if defined(_WIN32) || defined(__WIN32__) || defined(WIN32) || defined(__MINGW32__)
@@ -82,54 +82,54 @@ typedef void (*snd_func) (void);
 typedef snd_func (*snd_loader) (void* module, const char *name);
 void snd_load_al(snd_loader loader) {
     assert(g_al.module != NULL);
-    g_al.c.CreateContext      = (LPALCCREATECONTEXT)       loader(g_al.module, "alcCreateContext"));
-    g_al.c.MakeContextCurrent = (LPALCMAKECONTEXTCURRENT)  loader(g_al.module, "alcMakeContextCurrent"));
-    g_al.c.ProcessContext     = (LPALCPROCESSCONTEXT)      loader(g_al.module, "alcProcessContext"));
-    g_al.c.SuspendContext     = (LPALCSUSPENDCONTEXT)      loader(g_al.module, "alcSuspendContext"));
-    g_al.c.DestroyContext     = (LPALCDESTROYCONTEXT)      loader(g_al.module, "alcDestroyContext"));
-    g_al.c.GetCurrentContext  = (LPALCGETCURRENTCONTEXT)   loader(g_al.module, "alcGetCurrentContext"));
-    g_al.c.GetContextsDevice  = (LPALCGETCONTEXTSDEVICE)   loader(g_al.module, "alcGetContextsDevice"));
-    g_al.c.OpenDevice         = (LPALCOPENDEVICE)          loader(g_al.module, "alcOpenDevice"));
-    g_al.c.CloseDevice        = (LPALCCLOSEDEVICE)         loader(g_al.module, "alcCloseDevice"));
-    g_al.c.GetError           = (LPALCGETERROR)            loader(g_al.module, "alcGetError"));
-    g_al.c.GetString          = (LPALCGETSTRING)           loader(g_al.module, "alcGetString"));
-    g_al.c.GetIntegerv        = (LPALCGETINTEGERV)         loader(g_al.module, "alcGetIntegerv"));
-    g_al.c.CaptureOpenDevice  = (LPALCCAPTUREOPENDEVICE)   loader(g_al.module, "alcCaptureOpenDevice"));
-    g_al.c.CaptureCloseDevice = (LPALCCAPTURECLOSEDEVICE)  loader(g_al.module, "alcCaptureCloseDevice"));
-    g_al.c.CaptureStart       = (LPALCCAPTURESTART)        loader(g_al.module, "alcCaptureStart"));
-    g_al.c.CaptureStop        = (LPALCCAPTURESTOP)         loader(g_al.module, "alcCaptureStop"));
-    g_al.c.CaptureSamples     = (LPALCCAPTURESAMPLES)      loader(g_al.module, "alcCaptureSamples"));
-    g_al.GetString            = (LPALGETSTRING)            loader(g_al.module, "alGetString");
-    g_al.GetInteger           = (LPALGETINTEGER)           loader(g_al.module, "alGetInteger");
-    g_al.GetFloat             = (LPALGETFLOAT)             loader(g_al.module, "alGetFloat");
-    g_al.GetError             = (LPALGETERROR)             loader(g_al.module, "alGetError");
-    g_al.DopplerFactor        = (LPALDOPPLERFACTOR)        loader(g_al.module, "alDopplerFactor"));
-    g_al.SpeedOfSound         = (LPALSPEEDOFSOUND)         loader(g_al.module, "alSpeedOfSound"));
-    g_al.DistanceModel        = (LPALDISTANCEMODEL)        loader(g_al.module, "alDistanceModel"));
-    g_al.Listenerf            = (LPALLISTENERF)            loader(g_al.module, "alListenerf"));
-    g_al.Listenerfv           = (LPALLISTENERFV)           loader(g_al.module, "alListenerfv"));
-    g_al.GetListenerf         = (LPALGETLISTENERF)         loader(g_al.module, "alGetListenerf"));
-    g_al.GetListenerfv        = (LPALGETLISTENERFV)        loader(g_al.module, "alGetListenerfv"));
-    g_al.GenSources           = (LPALGENSOURCES)           loader(g_al.module, "alGenSources"));
-    g_al.DeleteSources        = (LPALDELETESOURCES)        loader(g_al.module, "alDeleteSources"));
-    g_al.IsSource             = (LPALISSOURCE)             loader(g_al.module, "alIsSource"));
-    g_al.Sourcef              = (LPALSOURCEF)              loader(g_al.module, "alSourcef"));
-    g_al.Sourcefv             = (LPALSOURCEFV)             loader(g_al.module, "alSourcefv"));
-    g_al.Sourcei              = (LPALSOURCEI)              loader(g_al.module, "alSourcei"));
-    g_al.GetSourcef           = (LPALGETSOURCEF)           loader(g_al.module, "alGetSourcef"));
-    g_al.GetSourcefv          = (LPALGETSOURCEFV)          loader(g_al.module, "alGetSourcefv"));
-    g_al.GetSourcei           = (LPALGETSOURCEI)           loader(g_al.module, "alGetSourcei"));
-    g_al.SourcePlayv          = (LPALSOURCEPLAYV)          loader(g_al.module, "alSourcePlayv"));
-    g_al.SourceStopv          = (LPALSOURCESTOPV)          loader(g_al.module, "alSourceStopv"));
-    g_al.SourceRewindv        = (LPALSOURCEREWINDV)        loader(g_al.module, "alSourceRewindv"));
-    g_al.SourcePausev         = (LPALSOURCEPAUSEV)         loader(g_al.module, "alSourcePausev"));
-    g_al.SourceQueueBuffers   = (LPALSOURCEQUEUEBUFFERS)   loader(g_al.module, "alSourceQueueBuffers"));
-    g_al.SourceUnqueueBuffers = (LPALSOURCEUNQUEUEBUFFERS) loader(g_al.module, "alSourceUnqueueBuffers"));
-    g_al.GenBuffers           = (LPALGENBUFFERS)           loader(g_al.module, "alGenBuffers"));
-    g_al.DeleteBuffers        = (LPALDELETEBUFFERS)        loader(g_al.module, "alDeleteBuffers"));
-    g_al.IsBuffer             = (LPALISBUFFER)             loader(g_al.module, "alIsBuffer"));
-    g_al.BufferData           = (LPALBUFFERDATA)           loader(g_al.module, "alBufferData"));
-    g_al.GetBufferi           = (LPALGETBUFFERI)           loader(g_al.module, "alGetBufferi"));
+    g_al.c.CreateContext      = (LPALCCREATECONTEXT)       (loader(g_al.module, "alcCreateContext"));
+    g_al.c.MakeContextCurrent = (LPALCMAKECONTEXTCURRENT)  (loader(g_al.module, "alcMakeContextCurrent"));
+    g_al.c.ProcessContext     = (LPALCPROCESSCONTEXT)      (loader(g_al.module, "alcProcessContext"));
+    g_al.c.SuspendContext     = (LPALCSUSPENDCONTEXT)      (loader(g_al.module, "alcSuspendContext"));
+    g_al.c.DestroyContext     = (LPALCDESTROYCONTEXT)      (loader(g_al.module, "alcDestroyContext"));
+    g_al.c.GetCurrentContext  = (LPALCGETCURRENTCONTEXT)   (loader(g_al.module, "alcGetCurrentContext"));
+    g_al.c.GetContextsDevice  = (LPALCGETCONTEXTSDEVICE)   (loader(g_al.module, "alcGetContextsDevice"));
+    g_al.c.OpenDevice         = (LPALCOPENDEVICE)          (loader(g_al.module, "alcOpenDevice"));
+    g_al.c.CloseDevice        = (LPALCCLOSEDEVICE)         (loader(g_al.module, "alcCloseDevice"));
+    g_al.c.GetError           = (LPALCGETERROR)            (loader(g_al.module, "alcGetError"));
+    g_al.c.GetString          = (LPALCGETSTRING)           (loader(g_al.module, "alcGetString"));
+    g_al.c.GetIntegerv        = (LPALCGETINTEGERV)         (loader(g_al.module, "alcGetIntegerv"));
+    g_al.c.CaptureOpenDevice  = (LPALCCAPTUREOPENDEVICE)   (loader(g_al.module, "alcCaptureOpenDevice"));
+    g_al.c.CaptureCloseDevice = (LPALCCAPTURECLOSEDEVICE)  (loader(g_al.module, "alcCaptureCloseDevice"));
+    g_al.c.CaptureStart       = (LPALCCAPTURESTART)        (loader(g_al.module, "alcCaptureStart"));
+    g_al.c.CaptureStop        = (LPALCCAPTURESTOP)         (loader(g_al.module, "alcCaptureStop"));
+    g_al.c.CaptureSamples     = (LPALCCAPTURESAMPLES)      (loader(g_al.module, "alcCaptureSamples"));
+    g_al.GetString            = (LPALGETSTRING)            (loader(g_al.module, "alGetString"));
+    g_al.GetInteger           = (LPALGETINTEGER)           (loader(g_al.module, "alGetInteger"));
+    g_al.GetFloat             = (LPALGETFLOAT)             (loader(g_al.module, "alGetFloat"));
+    g_al.GetError             = (LPALGETERROR)             (loader(g_al.module, "alGetError"));
+    g_al.DopplerFactor        = (LPALDOPPLERFACTOR)        (loader(g_al.module, "alDopplerFactor"));
+    g_al.SpeedOfSound         = (LPALSPEEDOFSOUND)         (loader(g_al.module, "alSpeedOfSound"));
+    g_al.DistanceModel        = (LPALDISTANCEMODEL)        (loader(g_al.module, "alDistanceModel"));
+    g_al.Listenerf            = (LPALLISTENERF)            (loader(g_al.module, "alListenerf"));
+    g_al.Listenerfv           = (LPALLISTENERFV)           (loader(g_al.module, "alListenerfv"));
+    g_al.GetListenerf         = (LPALGETLISTENERF)         (loader(g_al.module, "alGetListenerf"));
+    g_al.GetListenerfv        = (LPALGETLISTENERFV)        (loader(g_al.module, "alGetListenerfv"));
+    g_al.GenSources           = (LPALGENSOURCES)           (loader(g_al.module, "alGenSources"));
+    g_al.DeleteSources        = (LPALDELETESOURCES)        (loader(g_al.module, "alDeleteSources"));
+    g_al.IsSource             = (LPALISSOURCE)             (loader(g_al.module, "alIsSource"));
+    g_al.Sourcef              = (LPALSOURCEF)              (loader(g_al.module, "alSourcef"));
+    g_al.Sourcefv             = (LPALSOURCEFV)             (loader(g_al.module, "alSourcefv"));
+    g_al.Sourcei              = (LPALSOURCEI)              (loader(g_al.module, "alSourcei"));
+    g_al.GetSourcef           = (LPALGETSOURCEF)           (loader(g_al.module, "alGetSourcef"));
+    g_al.GetSourcefv          = (LPALGETSOURCEFV)          (loader(g_al.module, "alGetSourcefv"));
+    g_al.GetSourcei           = (LPALGETSOURCEI)           (loader(g_al.module, "alGetSourcei"));
+    g_al.SourcePlayv          = (LPALSOURCEPLAYV)          (loader(g_al.module, "alSourcePlayv"));
+    g_al.SourceStopv          = (LPALSOURCESTOPV)          (loader(g_al.module, "alSourceStopv"));
+    g_al.SourceRewindv        = (LPALSOURCEREWINDV)        (loader(g_al.module, "alSourceRewindv"));
+    g_al.SourcePausev         = (LPALSOURCEPAUSEV)         (loader(g_al.module, "alSourcePausev"));
+    g_al.SourceQueueBuffers   = (LPALSOURCEQUEUEBUFFERS)   (loader(g_al.module, "alSourceQueueBuffers"));
+    g_al.SourceUnqueueBuffers = (LPALSOURCEUNQUEUEBUFFERS) (loader(g_al.module, "alSourceUnqueueBuffers"));
+    g_al.GenBuffers           = (LPALGENBUFFERS)           (loader(g_al.module, "alGenBuffers"));
+    g_al.DeleteBuffers        = (LPALDELETEBUFFERS)        (loader(g_al.module, "alDeleteBuffers"));
+    g_al.IsBuffer             = (LPALISBUFFER)             (loader(g_al.module, "alIsBuffer"));
+    g_al.BufferData           = (LPALBUFFERDATA)           (loader(g_al.module, "alBufferData"));
+    g_al.GetBufferi           = (LPALGETBUFFERI)           (loader(g_al.module, "alGetBufferi"));
 }
 snd_loader snd_load_al_dll(void) {
 /* since we only use core functions, it's enough to load all function pointers once at init from the DLL.
@@ -183,6 +183,9 @@ snd_result_t snd_init(void) {
         return SND_ERROR_AL_NOT_PRESENT;
     }
     snd_load_al(loader);
+    
+    
+    
     g_al.nr_sources = 0;
     g_al.cap_sources = SND_INITIAL_ARRAY_CAP;
     g_al.source_ids = calloc(SND_INITIAL_ARRAY_CAP, sizeof(ALuint));
@@ -207,9 +210,11 @@ snd_result_t snd_buffer_alloc(snd_format_t format, uint32_t frequency_hz, void* 
     ALenum al_format;
     ALint bits, channels, i;
 
+#ifndef SND_NO_CHECKS
     if(buffer == NULL || data == NULL) {
         return SND_ERROR_INVALID_PARAM;
     }
+#endif
     switch(format) {
     case SND_FORMAT_PCM_UINT8_MONO:
         al_format = AL_FORMAT_MOMO8;
@@ -241,6 +246,7 @@ snd_result_t snd_buffer_alloc(snd_format_t format, uint32_t frequency_hz, void* 
     }
 
     g_al.GenBuffers(&id);
+#ifndef SND_NO_CHECKS
     switch(g_al.GetError()) {
     case AL_NO_ERROR:
         break;
@@ -252,8 +258,10 @@ snd_result_t snd_buffer_alloc(snd_format_t format, uint32_t frequency_hz, void* 
     if(g_al.IsBuffer(id) != AL_TRUE) {
         return SND_ERROR_UNKNOWN;
     }
+#endif
 
     g_al.BufferData(id, al_format, data, size, frequency_hz);
+#ifndef SND_NO_CHECKS
     switch(g_al.GetError()) {
     case AL_NO_ERROR:
         break;
@@ -262,7 +270,9 @@ snd_result_t snd_buffer_alloc(snd_format_t format, uint32_t frequency_hz, void* 
     default:
         return SND_ERROR_UNKNOWN;
     }
+#endif
 
+#ifdef SND_DEBUG
     g_al.GetBufferi(id, AL_FREQUENCY, &i)
     if(i != frequency_hz) {
         return SND_ERROR_UNKNOWN;
@@ -279,20 +289,20 @@ snd_result_t snd_buffer_alloc(snd_format_t format, uint32_t frequency_hz, void* 
     if(i != size) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.GetBufferi(id, AL_DATA, &i)
-    if(i != data) {
-        return SND_ERROR_UNKNOWN;
-    }
+#endif
 
     buffer[0] = id;
     return SND_OK;
 }
 snd_result_t snd_buffer_free(snd_buffer_t buffer) {
+#ifndef SND_NO_CHECKS
     if(g_al.IsBuffer(buffer) != AL_TRUE) {
         return SND_ERROR_INVALID_PARAM;
     }
+#endif
 
     g_al.DeleteBuffers(1, &buffer);
+#ifndef SND_NO_CHECKS
     switch(g_al.GetError()) {
     case AL_NO_ERROR:
         break;
@@ -301,9 +311,26 @@ snd_result_t snd_buffer_free(snd_buffer_t buffer) {
     default:
         return SND_ERROR_UNKNOWN;
     }
+#endif
 
     return SND_OK;
 }
+
+
+
+
+
+
+
+
+snd_result_t snd_mic_infos(int *nr_mics, const snd_mic_info_t **infos);
+snd_result_t snd_mic_record(int mic_id,  .. );
+
+
+snd_result_t snd_speaker_infos(int *nr_speakers, const snd_speaker_info_t **infos);
+snd_result_t snd_speaker_switch(int speaker_id);
+
+
 
 /* context check? or adding in context mark in snd_source_t ? */
 snd_result_t snd_source_create(snd_source_state_t state, snd_source_t* source) {
@@ -625,4 +652,209 @@ snd_result_t snd_source_destroy(snd_source_t source) {
 
 AL_BUFFER
 AL_SOURCE_STATE
+
+
+
+
+
+/*
+
+List of AL stuff to use / implement:
+
+funcions loaded above that may be unnecessary:
+alGetString, alListenerf, alListenerf, alGetListenerf, alSourcef, alGetSourcef
+
+
+
+constant use:
+alcGetError, alGetError
+
+
+global gets:
+
+alcGetString             these give, with device = NULL, defaults and enumerations
+    ALC_DEFAULT_DEVICE_SPECIFIER            string
+    ALC_DEVICE_SPECIFIER                    string
+    ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER    string
+    ALC_CAPTURE_DEVICE_SPECIFIER            string
+    
+
+
+
+Mic:
+alcCaptureOpenDevice
+alcCaptureCloseDevice
+alcCaptureStart
+alcCaptureStop
+alcCaptureSamples
+
+alcGetString
+    ALC_CAPTURE_DEVICE_SPECIFIER            string      returns name, debug
+
+
+Device:
+alcOpenDevice
+alcCloseDevice
+
+alcGetString
+    ALC_DEVICE_SPECIFIER                    string      returns name, debug
+
+
+Context / Listener / Global AL (not ALC):
+alcCreateContext
+alcMakeContextCurrent
+alcDestroyContext
+
+alcProcessContext       unclear what they do, but maybe relevant
+alcSuspendContext
+
+alDopplerFactor, alSpeedOfSound, alDistanceModel
+
+        use functions f for gain and fv for all else; Get only for debug
+        or can we just use fv? maybe the guide is just limited there,
+        since the spec explicitly allows it
+al[Get]Listener[f|fv]
+    AL_GAIN             f
+    AL_POSITION         3f
+    AL_VELOCITY         3f
+    AL_ORIENTATION      6f
+
+
+debug: to compare our values are right
+
+alcGetCurrentContext
+alcGetContextsDevice
+
+alcGetIntegerv
+    ALC_ATTRIBUTES_SIZE
+    ALC_ALL_ATTRIBUTES
+
+alGetInteger
+    AL_DISTANCE_MODEL       1e
+alGetFloat      
+    AL_DOPPLER_FACTOR       1f
+    AL_SPEED_OF_SOUND       1f
+    
+    
+
+
+
+
+Buffer:
+alGenBuffers
+alBufferData
+alDeleteBuffers
+
+debug:
+alIsBuffer
+alGetBufferi
+    AL_FREQUENCY
+    AL_BITS
+    AL_CHANNELS
+    AL_SIZE
+    AL_DATA [? not in spec, but in guide - there given as useless too]
+        AL_DATA is not even defined in al.h so we should probably ignore it.
+
+
+    
+    
+Source:
+
+
+alGenSources
+alDeleteSources
+
+
+al[Get]Source[fv|i]             for real changes and getting for debug, or for real getters:
+    AL_PITCH                        1f
+    AL_GAIN                         1f
+    AL_MIN_GAIN                     1f
+    AL_MAX_GAIN                     1f
+    AL_MAX_DISTANCE                 1f
+    AL_ROLLOFF_FACTOR               1f
+    AL_CONE_OUTER_GAIN              1f
+    AL_CONE_INNER_ANGLE             1f
+    AL_CONE_OUTER_ANGLE             1f
+    AL_REFERENCE_DISTANCE           1f
+    AL_POSITION                     3f
+    AL_VELOCITY                     3f
+    AL_DIRECTION                    3f
+    AL_SOURCE_RELATIVE              1b
+    AL_LOOPING                      1b
+    AL_BUFFER                       1i      the buffer id, can only be changed when not playing
+    AL_SOURCE_STATE                 1e
+    AL_SEC_OFFSET                   1f      [not in guide]
+    AL_SAMPLE_OFFSET                1f      [not in guide]
+    AL_BYTE_OFFSET                  1f      [not in guide]
+    
+    only getter:
+    AL_SOURCE_TYPE                  1i [not in guide in right place]
+    AL_BUFFERS_QUEUED               1i
+    AL_BUFFERS_PROCESSED            1i
+    
+
+alSourcePlayv
+alSourceStopv
+alSourceRewindv
+alSourcePausev
+alSourceQueueBuffers
+alSourceUnqueueBuffers
+
+debug:
+alIsSource
+
+
+
+
+
+
+
+
+unnecessary:
+            we dont use extensions, so none of these are necessary
+alGetProcAddress, alcGetProcAddress, alIsExtensionPresent, alcIsExtensionPresent, alGetEnumValue, alcGetEnumValue
+ALC_EXTENSIONS  string, global
+AL_EXTENSIONS       1i
+            standard AL has no capabilities
+alEnable, alDisable, alIsEnabled
+            there are no query destinations for that
+alGetBooleanv, alGetIntegerv, alGetFloatv, alGetDoublev, alGetBoolean, alGetDouble
+            similar
+al[Get]Listeneri, alBufferf, alBuffer3f, alBufferfv, alBufferi, alBuffer3i, alBufferiv, alGetBufferf, alGetBuffer3f, alGetBufferfv, alGetBuffer3i, alSource3i, alGetSource3i
+
+            are unnecessary:
+al[Get]Listener[3f|3i|iv], alGetBufferiv, alSourcef, alSource3f, alSourceiv, alGetSourcef, alGetSource3f, alGetSourceiv
+
+            are the same as synchronized v versions with n == 1
+alSourcePlay, alSourceStop, alSourceRewind, alSourcePause
+
+        these are useless bc we can't use this to extrapolate anything
+alcGetIntegerv
+    ALC_MAJOR_VERSION           1i
+    ALC_MINOR_VERSION           1i
+alGetString
+    AL_VENDOR
+    AL_VERSION
+    AL_RENDERER
+    
+deprecated:
+alDopplerVelocity - no use at all, see https://github.com/kcat/openal-soft/pull/1122
+
+
+
+
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+*/
 
