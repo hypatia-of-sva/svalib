@@ -15,16 +15,22 @@
 #include <dlfcn.h>
 #endif /* _WIN32 */
 
+
+
+
+TODO: check all alGetError vs alcGetError!
+TODO: add constraints for the getters/setters according to property info in spec! (no NaN etc.)
+
+
+
+
 #define SND_INITIAL_ARRAY_CAP 1024
 
 
-struct g_al {
+static struct g_al {
     void*                            module;
-    size_t                           nr_sources;
-    size_t                           cap_sources;
-    bool*                            source_used;
-    ALuint*                          source_ids;
-    snd_source_state_t               source_states;
+    snd_device_list_t                devices;
+    ALCdevice**                      playback_device_handles;
     struct {
         LPALCCREATECONTEXT               CreateContext;
         LPALCMAKECONTEXTCURRENT          MakeContextCurrent;
@@ -80,7 +86,7 @@ struct g_al {
 /* minimal version of alad for just core AL/ALC since we don't use more: */
 typedef void (*snd_func) (void);
 typedef snd_func (*snd_loader) (void* module, const char *name);
-void snd_load_al(snd_loader loader) {
+static void snd_load_al(snd_loader loader) {
     assert(g_al.module != NULL);
     g_al.c.CreateContext      = (LPALCCREATECONTEXT)       (loader(g_al.module, "alcCreateContext"));
     g_al.c.MakeContextCurrent = (LPALCMAKECONTEXTCURRENT)  (loader(g_al.module, "alcMakeContextCurrent"));
@@ -131,7 +137,7 @@ void snd_load_al(snd_loader loader) {
     g_al.BufferData           = (LPALBUFFERDATA)           (loader(g_al.module, "alBufferData"));
     g_al.GetBufferi           = (LPALGETBUFFERI)           (loader(g_al.module, "alGetBufferi"));
 }
-snd_loader snd_load_al_dll(void) {
+static snd_loader snd_load_al_dll(void) {
 /* since we only use core functions, it's enough to load all function pointers once at init from the DLL.
  * This would be different for direct functions, but since they're newer we avoid them here.
  */
@@ -167,7 +173,7 @@ snd_loader snd_load_al_dll(void) {
     return (snd_loader) dlsym;
 #endif /* _WIN32 */
 }
-void snd_unload_al_dll(void) {
+static void snd_unload_al_dll(void) {
     assert(g_al.module != NULL);
 #if defined(_WIN32) || defined(__WIN32__) || defined(WIN32) || defined(__MINGW32__)
     FreeLibrary(g_al.module);
@@ -176,42 +182,727 @@ void snd_unload_al_dll(void) {
 #endif
 }
 
+/* NOT replaceable with normal split functions! It has to deal with strain NULs as seperators and the strange double NUL as terminator */
+static snd_result_t split_device_string(const char* str, int* out_num_strings, const char*** out_strings) {
+    int num = 0, last_nul = INT_MAX, copied = 0, len; char** str_array;
+#ifndef SND_NO_CHECKS
+    if(out_num_strings == NULL || out_strings == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    /* First scan for the number of strings: */
+    for(int i = 0;; i++) {
+        if(str[i] == '\0') {
+            if(last_nul == i-1) {
+                break;
+            }
+            num++;
+            last_nul = i;
+        }
+    }
+    str_array = calloc(num, sizeof(char*));
+    /* Second scan to copy the strings out: */
+    for(int i = 0;; i++) {
+        if(str[i] == '\0') {
+            if(last_nul == i-1) {
+                break;
+            }
+            len = i - last_nul; /* includes the NUL in its size */
+            str_array[copied] = calloc(len, sizeof(char));
+            memmove(str_array[copied], &str[last_nul+1], len-1);
+            copied++;
+            last_nul = i;
+        }
+    }
+#ifndef SND_NO_CHECKS
+    if(copied != num) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    out_num_strings[0] = num;
+    out_strings[0] = str_arrays;
+    return SND_OK;
+}
 
-snd_result_t snd_init(void) {
+snd_result_t snd_init(snd_device_list_t* out_device_list) {
+    snd_result_t r; const ALCchar* str;
+    
+#ifndef SND_NO_CHECKS
+    if(out_device_list == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
     snd_loader loader = snd_load_al_dll();
     if(loader == NULL) {
         return SND_ERROR_AL_NOT_PRESENT;
     }
     snd_load_al(loader);
     
+    str = alcGetString(NULL, ALC_DEVICE_SPECIFIER);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(str == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    r = split_device_string(str, &(g_al.devices.nr_playback_devices), &(g_al.devices.playback_devices));
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
     
+    str = alcGetString(NULL, ALC_DEFAULT_DEVICE_SPECIFIER);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(str == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    g_al.devices.playback_devices_default_id = -1;
+    for(int i = 0; i < g_al.devices.nr_playback_devices; i++) {
+        if(strcmp(g_al.devices.playback_devices[i], str) == 0) {
+            g_al.devices.playback_devices_default_id = i;
+            break;
+        }
+    }
+#ifndef SND_NO_CHECKS
+    if(g_al.devices.playback_devices_default_id < 0) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    str = alcGetString(NULL, ALC_CAPTURE_DEVICE_SPECIFIER);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(str == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    r = split_device_string(str, &(g_al.devices.nr_recording_devices), &(g_al.devices.recording_devices));
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
     
-    g_al.nr_sources = 0;
-    g_al.cap_sources = SND_INITIAL_ARRAY_CAP;
-    g_al.source_ids = calloc(SND_INITIAL_ARRAY_CAP, sizeof(ALuint));
-    g_al.source_states = calloc(SND_INITIAL_ARRAY_CAP, sizeof(snd_source_state_t));
-    g_al.source_used = calloc(SND_INITIAL_ARRAY_CAP, sizeof(bool));
+    str = alcGetString(NULL, ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(str == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    g_al.devices.recording_devices_default_id = -1;
+    for(int i = 0; i < g_al.devices.nr_recording_devices; i++) {
+        if(strcmp(g_al.devices.recording_devices[i], str) == 0) {
+            g_al.devices.recording_devices_default_id = i;
+            break;
+        }
+    }
+#ifndef SND_NO_CHECKS
+    if(g_al.devices.recording_devices_default_id < 0) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    g_al.playback_device_handles = calloc(g_al.devices.nr_playback_devices, sizeof(ALCdevice*));
+
+    out_device_list[0] = g_al.devices;
+    
     return SND_OK;
 }
 snd_result_t snd_exit(void) {
     snd_unload_al_dll();
+    
+    for(int i = 0; i < g_al.devices.nr_playback_devices) {
+        if(g_al.playback_device_handles[i] != NULL) {
+            g_al.c.CloseDevice(g_al.playback_device_handles[i]);
+#ifndef SND_NO_CHECKS
+            if(g_al.GetError() != AL_NO_ERROR) {
+                return SND_ERROR_UNKNOWN;
+            }
+#endif
+        }
+    }
+    if(g_al.devices.playback_devices != NULL) {
+        free(g_al.devices.playback_devices);
+    }
+    if(g_al.devices.recording_devices != NULL) {
+        free(g_al.devices.recording_devices);
+    }
     return SND_OK;
 }
 
+snd_result_t snd_recording_device_open(uint32_t recording_device_id, snd_format_t format, uint32_t frequency_hz, size_t internal_buffer_size, snd_recording_device_t* device) {
+    ALenum al_format; const ALCchar* dev_name; const ALchar* str; ALCdevice* handle;
+    
+#ifndef SND_NO_CHECKS
+    if(device == NULL || recording_device_id < 0 || recording_device_id >= g_al.devices.nr_recording_devices) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    switch(format) {
+    case SND_FORMAT_PCM_UINT8_MONO:
+        al_format = AL_FORMAT_MOMO8;
+        break;
+    case SND_FORMAT_PCM_INT16_MONO:
+        al_format = AL_FORMAT_MOMO16;
+        break;
+    case SND_FORMAT_PCM_UINT8_STEREO_INTERLEAVED_LR:
+        al_format = AL_FORMAT_STEREO8;
+        break;
+    case SND_FORMAT_PCM_INT16_STEREO_INTERLEAVED_LR:
+        al_format = AL_FORMAT_STEREO16;
+        break;
+    default:
+        return SND_ERROR_INVALID_PARAM;
+    }
+    dev_name = (const ALchar*) g_al.devices.recording_devices[recording_device_id];
+    
+    handle = g_al.c.CaptureOpenDevice(dev_name, frequency_hz, al_format, internal_buffer_size);
+#ifndef SND_NO_CHECKS
+    switch(g_al.GetError()) {
+    case AL_NO_ERROR:
+        break;
+    case AL_OUT_OF_MEMORY:
+        return SND_ERROR_RECORDING_DEVICE_INVALID;
+    default:
+        return SND_ERROR_UNKNOWN;
+    }
+    if(handle == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    str = alcGetString(handle, ALC_CAPTURE_DEVICE_SPECIFIER);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(str == NULL || strcmp(str, dev_name) != 0) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    device[0].handle = handle;
+    return SND_OK;
+}
+snd_result_t snd_recording_device_close(snd_recording_device_t device) {
+#ifndef SND_NO_CHECKS
+    if(device.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    g_al.c.CaptureCloseDevice((ALCdevice*)device.handle);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    return SND_OK;
+}
+snd_result_t snd_recording_start(snd_recording_device_t device) {
+#ifndef SND_NO_CHECKS
+    if(device.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    g_al.c.CaptureStart((ALCdevice*)device.handle);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    return SND_OK;
+}
+snd_result_t snd_recording_stop(snd_recording_device_t device) {
+#ifndef SND_NO_CHECKS
+    if(device.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    g_al.c.CaptureStop((ALCdevice*)device.handle);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    return SND_OK;
+}
+snd_result_t snd_recording_retrieve_samples_nonblocking(snd_recording_device_t device, void* buffer, size_t nr_samples) {
+#ifndef SND_NO_CHECKS
+    if(device.handle == NULL || buffer == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    g_al.c.CaptureSamples((ALCdevice*)device.handle, buffer, nr_samples);
+#ifndef SND_NO_CHECKS
+    switch(g_al.GetError()) {
+    case AL_NO_ERROR:
+        break;
+    case ALC_INVALID_VALUE:
+        return SND_ERROR_RECORDING_NOT_AVAILABLE;
+    default:
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    return SND_OK;
+}
+
+static snd_result_t snd_context_set(ALCcontext* new, ALCcontext** old) {
+    ALCcontext* old_con; ALCboolean b;
+    
+#ifndef SND_NO_CHECKS
+    if(new == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    if(old != NULL) {
+        old_con = g_al.c.GetCurrentContext();
+#ifndef SND_NO_CHECKS
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+        if(old_con == NULL) {
+            return SND_ERROR_UNKNOWN;
+        }
+#endif
+    }
+    
+    if(old == NULL || new != old_con) {
+        b = g_al.c.MakeContextCurrent(new);
+#ifndef SND_NO_CHECKS
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+        if(b != AL_TRUE) {
+            return SND_ERROR_UNKNOWN;
+        }
+#endif
+    }
+    
+    if(old != NULL)
+        old[0] = old_con;
+        
+    return SND_OK;
+}
+
+snd_result_t snd_listener_context_create(uint32_t playback_device_id, uint32_t mixing_frequency_Hz, uint32_t refresh_interval_Hz, bool synchronous, uint32_t requested_min_nr_mono_sources, uint32_t requested_min_nr_stereo_sources, snd_listener_context_t* context) {
+    const ALCchar* str; ALCint attrlist[11]; ALCboolean b; ALCint iv[11];
+    ALCcontext* handle, old_con; ALCdevice* dev;
+    
+#ifndef SND_NO_CHECKS
+    if(context == NULL || playback_device_id < 0 || playback_device_id >= g_al.devices.nr_playback_devices) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    /* we convert from uint32 to int32 so check there is no issue */
+    if(mixing_frequency_Hz > INT32_MAX || refresh_interval_Hz > INT32_MAX || requested_min_nr_mono_sources > INT32_MAX || requested_min_nr_stereo_sources > INT32_MAX) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    if(g_al.playback_device_handles[playback_device_id] == NULL) {
+        g_al.playback_device_handles[playback_device_id] = g_al.c.OpenDevice(g_al.devices.playback_devices[i]);
+#ifndef SND_NO_CHECKS
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+#endif
+#ifdef SND_DEBUG
+        str = alcGetString(g_al.playback_device_handles[playback_device_id], ALC_DEVICE_SPECIFIER);
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+        if(str == NULL || strcmp(str, g_al.devices.playback_devices[i]) != 0) {
+            return SND_ERROR_UNKNOWN;
+        }
+#endif
+    }
+    dev = g_al.playback_device_handles[playback_device_id];
+
+    attrlist[0] = ALC_FREQUENCY;
+    attrlist[1] = mixing_frequency_Hz;
+    attrlist[2] = ALC_REFRESH;
+    attrlist[3] = refresh_interval_Hz;
+    attrlist[4] = ALC_SYNC;
+    attrlist[5] = synchronous;
+    attrlist[6] = ALC_MONO_SOURCES;
+    attrlist[7] = requested_min_nr_mono_sources;
+    attrlist[8] = ALC_STEREO_SOURCES;
+    attrlist[9] = requested_min_nr_stereo_sources;
+    attrlist[10] = 0;
+
+    handle = g_al.c.CreateContext(dev, attrlist);
+#ifndef SND_NO_CHECKS
+    switch(g_al.GetError()) {
+    case AL_NO_ERROR:
+        break;
+    case ALC_INVALID_VALUE:
+        return SND_ERROR_DEVICE_OUT_OF_LISTENING_CONTEXTS;
+    default:
+        return SND_ERROR_UNKNOWN;
+    }
+    if(handle == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    if(g_al.c.GetContextsDevice(handle) != dev) {
+        return SND_ERROR_UNKNOWN;
+    }
+
+    old_con = g_al.c.GetCurrentContext();
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(old_con == NULL) {
+        return SND_ERROR_UNKNOWN;
+    }
+    b = g_al.c.MakeContextCurrent(handle);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(b != AL_TRUE) {
+        return SND_ERROR_UNKNOWN;
+    }
+    
+    g_al.c.GetIntegerv(dev, ALC_ATTRIBUTES_SIZE, 1, iv);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(iv[0] != 11) {
+        return SND_ERROR_UNKNOWN;
+    }
+    
+    g_al.c.GetIntegerv(dev, ALC_ALL_ATTRIBUTES, 11, iv);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(memcmp(iv, attrlist, sizeof(ALCint)*11) != 0) {
+        return SND_ERROR_UNKNOWN;
+    }
+    
+    b = g_al.c.MakeContextCurrent(old_con);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(b != AL_TRUE) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    context[0].handle = handle;
+    return GFX_OK;
+}
+snd_result_t snd_listener_context_params_get(snd_listener_context_t context, snd_listener_context_params_t* out_params) {
+    snd_result_t r; ALCcontext* old_con; snd_listener_context_params_t params;
+    ALfloat fv[6]; ALint i;
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || out_params == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    g_al.GetListenerfv(AL_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.gain_multiplier = fv[0];
+
+    g_al.GetListenerfv(AL_POSITION, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.position.x = fv[0];
+    params.position.y = fv[1];
+    params.position.z = fv[2];
+
+    g_al.GetListenerfv(AL_VELOCITY, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.velocity.x = fv[0];
+    params.velocity.y = fv[1];
+    params.velocity.z = fv[2];
+    
+    g_al.GetListenerfv(AL_ORIENTATION, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.orientation.forward.x = fv[0];
+    params.orientation.forward.y = fv[1];
+    params.orientation.forward.z = fv[2];
+    params.orientation.up.x = fv[3];
+    params.orientation.up.y = fv[4];
+    params.orientation.up.z = fv[5];
+    
+    i = g_al.GetInteger(AL_DISTANCE_MODEL);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    switch(i) {
+    case AL_INVERSE_DISTANCE:
+        params.distance_model = SND_DISTANCE_MODEL_TYPE_INVERSE_DISTANCE;
+        break;
+    case AL_INVERSE_DISTANCE_CLAMPED:
+        params.distance_model = SND_DISTANCE_MODEL_TYPE_INVERSE_DISTANCE_CLAMPED;
+        break;
+    case AL_LINEAR_DISTANCE:
+        params.distance_model = SND_DISTANCE_MODEL_TYPE_LINEAR_DISTANCE;
+        break;
+    case AL_LINEAR_DISTANCE_CLAMPED:
+        params.distance_model = SND_DISTANCE_MODEL_TYPE_LINEAR_DISTANCE_CLAMPED;
+        break;
+    case AL_EXPONENT_DISTANCE:
+        params.distance_model = SND_DISTANCE_MODEL_TYPE_EXPONENT_DISTANCE;
+        break;
+    case AL_EXPONENT_DISTANCE_CLAMPED:
+        params.distance_model = SND_DISTANCE_MODEL_TYPE_EXPONENT_DISTANCE_CLAMPED;
+        break;
+    case AL_NONE:
+        params.distance_model = SND_DISTANCE_MODEL_TYPE_NONE;
+        break;
+    default:
+        return SND_ERROR_UNKNOWN;
+    }
+    
+    fv[0] = g_al.GetFloat(AL_DOPPLER_FACTOR);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.doppler_factor = fv[0];
+    
+    fv[0] = g_al.GetFloat(AL_SPEED_OF_SOUND);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.speed_of_sound = fv[0];
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    out_params[0] = params;
+    return SND_OK;
+}
+snd_result_t snd_listener_context_params_set(snd_listener_context_t context, const snd_listener_context_params_t params) {
+    snd_result_t r; ALCcontext* old_con; snd_listener_context_params_t test_params; ALenum e; ALfloat fv[6];
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    switch(params.distance_model) {
+    case SND_DISTANCE_MODEL_TYPE_INVERSE_DISTANCE:
+        e = AL_INVERSE_DISTANCE;
+        break;
+    case SND_DISTANCE_MODEL_TYPE_INVERSE_DISTANCE_CLAMPED:
+        e = AL_INVERSE_DISTANCE_CLAMPED;
+        break;
+    case SND_DISTANCE_MODEL_TYPE_LINEAR_DISTANCE:
+        e = AL_LINEAR_DISTANCE;
+        break;
+    case SND_DISTANCE_MODEL_TYPE_LINEAR_DISTANCE_CLAMPED:
+        e = AL_LINEAR_DISTANCE_CLAMPED;
+        break;
+    case SND_DISTANCE_MODEL_TYPE_EXPONENT_DISTANCE:
+        e = AL_EXPONENT_DISTANCE;
+        break;
+    case SND_DISTANCE_MODEL_TYPE_EXPONENT_DISTANCE_CLAMPED:
+        e = AL_EXPONENT_DISTANCE_CLAMPED;
+        break;
+    case SND_DISTANCE_MODEL_TYPE_NONE:
+        e = AL_NONE;
+        break;
+    default:
+        return SND_ERROR_INVALID_PARAM;
+    }
+    g_al.DistanceModel(e);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    g_al.DopplerFactor(params.doppler_factor);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    g_al.SpeedOfSound(params.speed_of_sound);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    fv[0] = params.gain_multiplier;
+    g_al.Listenerfv(AL_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    fv[0] = params.position.x;
+    fv[1] = params.position.y;
+    fv[2] = params.position.z;
+    g_al.Listenerfv(AL_POSITION, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    fv[0] = params.velocity.x;
+    fv[1] = params.velocity.y;
+    fv[2] = params.velocity.z;
+    g_al.Listenerfv(AL_VELOCITY, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    fv[0] = params.orientation.forward.x;
+    fv[1] = params.orientation.forward.y;
+    fv[2] = params.orientation.forward.z;
+    fv[3] = params.orientation.up.x;
+    fv[4] = params.orientation.up.y;
+    fv[5] = params.orientation.up.z;
+    g_al.Listenerfv(AL_ORIENTATION, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
 
 
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
 
 
+#ifdef SND_DEBUG
+    r = snd_listener_context_params_get(context, &test_params);
+    if(r != SND_OK) { return r; }
 
+    if(test_params != params) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
 
+    return SND_OK;
+}
+snd_result_t snd_listener_context_process(snd_listener_context_t context) {
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
 
-snd_result_t snd_buffer_alloc(snd_format_t format, uint32_t frequency_hz, void* data, size_t size, snd_buffer_t* buffer) {
-    snd_buffer_t id;
+    g_al.c.ProcessContext(context.handle);
+#ifndef SND_NO_CHECKS
+    if(g_al.c.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_listener_context_suspend(snd_listener_context_t context) {
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.c.SuspendContext(context.handle);
+#ifndef SND_NO_CHECKS
+    if(g_al.c.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_listener_context_destroy(snd_listener_context_t context) {
+    ALCboolean b;
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    if(g_al.c.GetCurrentContext() == context.handle) {
+        b = g_al.c.MakeContextCurrent(NULL);
+#ifndef SND_NO_CHECKS
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+        if(b != AL_TRUE) {
+            return SND_ERROR_UNKNOWN;
+        }
+#endif
+    }
+
+    g_al.c.DestroyContext(context.handle);
+#ifndef SND_NO_CHECKS
+    if(g_al.c.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    return SND_OK;
+}
+
+snd_result_t snd_buffer_alloc(snd_listener_context_t context, snd_format_t format, uint32_t frequency_hz, void* data, size_t size, snd_buffer_t* buffer) {
+    ALuint id;
     ALenum al_format;
     ALint bits, channels, i;
+    snd_result_t r; ALCcontext* old_con;
 
 #ifndef SND_NO_CHECKS
-    if(buffer == NULL || data == NULL) {
+    if(context.handle == NULL || buffer == NULL || data == NULL) {
         return SND_ERROR_INVALID_PARAM;
     }
 #endif
@@ -244,6 +935,11 @@ snd_result_t snd_buffer_alloc(snd_format_t format, uint32_t frequency_hz, void* 
     default:
         return SND_ERROR_INVALID_PARAM;
     }
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
 
     g_al.GenBuffers(&id);
 #ifndef SND_NO_CHECKS
@@ -291,17 +987,35 @@ snd_result_t snd_buffer_alloc(snd_format_t format, uint32_t frequency_hz, void* 
     }
 #endif
 
-    buffer[0] = id;
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    buffer[0].id = id;
     return SND_OK;
 }
-snd_result_t snd_buffer_free(snd_buffer_t buffer) {
+snd_result_t snd_buffer_free(snd_listener_context_t context, snd_buffer_t buffer) {
+    snd_result_t r; ALCcontext* old_con;
+    
 #ifndef SND_NO_CHECKS
-    if(g_al.IsBuffer(buffer) != AL_TRUE) {
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsBuffer(buffer.id) != AL_TRUE) {
         return SND_ERROR_INVALID_PARAM;
     }
 #endif
 
-    g_al.DeleteBuffers(1, &buffer);
+    g_al.DeleteBuffers(1, &(buffer.id));
 #ifndef SND_NO_CHECKS
     switch(g_al.GetError()) {
     case AL_NO_ERROR:
@@ -313,26 +1027,1056 @@ snd_result_t snd_buffer_free(snd_buffer_t buffer) {
     }
 #endif
 
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+
+snd_result_t snd_source_create(snd_listener_context_t context, snd_source_t* source) {
+    snd_result_t r; ALCcontext* old_con; ALuint id;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || source == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    g_al.GenSources(1, &id);
+#ifndef SND_NO_CHECKS
+    switch(g_al.GetError()) {
+    case AL_NO_ERROR:
+        break;
+    case AL_OUT_OF_MEMORY:
+        return SND_ERROR_OUT_OF_MEMORY;
+    case AL_INVALID_VALUE:
+        return SND_ERROR_LISTENING_CONTEXT_OUT_OF_SOURCES;
+    default:
+        return SND_ERROR_UNKNOWN;
+    }
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    source[0].id = id;
+
+    return SND_OK;
+}
+snd_result_t snd_source_delete(snd_listener_context_t context, snd_source_t source) {
+    snd_result_t r; ALCcontext* old_con;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.DeleteSources(1, &(source.id));
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_source_params_get(snd_listener_context_t context, snd_source_t source, const snd_source_params_t* out_params) {
+    snd_result_t r; ALCcontext* old_con; snd_source_params_t params;
+    ALint i; ALfloat fv[3];
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || out_params == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.GetSourcei(source.id, AL_SOURCE_RELATIVE, &i);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.position_relative_to_listener = i;
+    
+    g_al.GetSourcei(source.id, AL_LOOPING, &i);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.looping = i;
+    
+    g_al.GetSourcefv(source.id, AL_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.gain.multiplier = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_MIN_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.gain.min = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_MAX_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.gain.max = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_CONE_OUTER_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.gain.outer_angle_secondary_multiplier = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_CONE_INNER_ANGLE, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.cone.inner_angle = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_CONE_OUTER_ANGLE, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.cone.outer_angle = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_REFERENCE_DISTANCE, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.distance.reference = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_MAX_DISTANCE, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.distance.max = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_ROLLOFF_FACTOR, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.distance.rolloff_factor = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_PITCH, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.pitch_shift_multiplier = fv[0];
+    
+    g_al.GetSourcefv(source.id, AL_POSITION, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.position.x = fv[0];
+    params.position.y = fv[1];
+    params.position.z = fv[2];
+    
+    g_al.GetSourcefv(source.id, AL_VELOCITY, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.velocity.x = fv[0];
+    params.velocity.y = fv[1];
+    params.velocity.z = fv[2];
+    
+    g_al.GetSourcefv(source.id, AL_DIRECTION, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    params.direction.x = fv[0];
+    params.direction.y = fv[1];
+    params.direction.z = fv[2];
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    out_params[0] = params;
+
+    return SND_OK;
+}
+snd_result_t snd_source_params_set(snd_listener_context_t context, snd_source_t source, const snd_source_params_t params) {
+    snd_result_t r; ALCcontext* old_con; ALfloat fv[3];
+    snd_source_params_t test_params;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.Sourcei(source.id, AL_SOURCE_RELATIVE, params.position_relative_to_listener);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    g_al.Sourcei(source.id, AL_LOOPING, params.looping);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.gain.multiplier;
+    g_al.Sourcefv(source.id, AL_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.gain.min;
+    g_al.Sourcefv(source.id, AL_MIN_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.gain.max;
+    g_al.Sourcefv(source.id, AL_MAX_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.gain.outer_angle_secondary_multiplier;
+    g_al.Sourcefv(source.id, AL_CONE_OUTER_GAIN, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.cone.inner_angle;
+    g_al.Sourcefv(source.id, AL_CONE_INNER_ANGLE, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.cone.outer_angle;
+    g_al.Sourcefv(source.id, AL_CONE_OUTER_ANGLE, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.distance.reference;
+    g_al.Sourcefv(source.id, AL_REFERENCE_DISTANCE, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.distance.max;
+    g_al.Sourcefv(source.id, AL_MAX_DISTANCE, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.distance.rolloff_factor;
+    g_al.Sourcefv(source.id, AL_ROLLOFF_FACTOR, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.pitch_shift_multiplier;
+    g_al.Sourcefv(source.id, AL_PITCH, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.position.x;
+    fv[1] = params.position.y;
+    fv[2] = params.position.z;
+    g_al.Sourcefv(source.id, AL_POSITION, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.velocity.x;
+    fv[1] = params.velocity.y;
+    fv[2] = params.velocity.z;
+    g_al.Sourcefv(source.id, AL_VELOCITY, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    
+    fv[0] = params.direction.x;
+    fv[1] = params.direction.y;
+    fv[2] = params.direction.z;
+    g_al.Sourcefv(source.id, AL_DIRECTION, fv);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+
+#ifdef SND_DEBUG
+    r = snd_source_params_get(context, source, &test_params);
+    if(r != SND_OK) { return r; }
+
+    if(test_params != params) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    return SND_OK;
+}
+
+snd_result_t snd_source_play_position_set(snd_listener_context_t context, snd_source_t source, snd_source_position_format_t format, float value) {
+    snd_result_t r; ALCcontext* old_con; ALenum al_param_name;
+    ALfloat f;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    switch(format) {
+    case SND_SOURCE_POSITION_FORMAT_SECONDS:
+        al_param_name = AL_SEC_OFFSET;
+        break;
+    case SND_SOURCE_POSITION_FORMAT_SAMPLES:
+        al_param_name = AL_SAMPLE_OFFSET;
+        break;
+    case SND_SOURCE_POSITION_FORMAT_BYTES:
+        al_param_name = AL_BYTE_OFFSET;
+        break;
+    default:
+        return SND_ERROR_INVALID_PARAM;
+    }
+    
+    f = value;
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.Sourcefv(source.id, al_param_name, &f);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    g_al.GetSourcefv(source.id, al_param_name, &f);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(f != value) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_source_play_position_get(snd_listener_context_t context, snd_source_t source, snd_source_position_format_t format, float* out_value) {
+    snd_result_t r; ALCcontext* old_con; ALenum al_param_name;
+    ALfloat f;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || out_value == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    switch(format) {
+    case SND_SOURCE_POSITION_FORMAT_SECONDS:
+        al_param_name = AL_SEC_OFFSET;
+        break;
+    case SND_SOURCE_POSITION_FORMAT_SAMPLES:
+        al_param_name = AL_SAMPLE_OFFSET;
+        break;
+    case SND_SOURCE_POSITION_FORMAT_BYTES:
+        al_param_name = AL_BYTE_OFFSET;
+        break;
+    default:
+        return SND_ERROR_INVALID_PARAM;
+    }
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.GetSourcefv(source.id, al_param_name, &f);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    out_value[0] = f;
+
+    return SND_OK;
+}
+snd_result_t snd_source_queue_position_get(snd_listener_context_t context, snd_source_t source, uint32_t* nr_buffers_in_queue, uint32_t* currently_playing_index) {
+    snd_result_t r; ALCcontext* old_con;
+    ALint i1, i2;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || nr_buffers_in_queue == NULL || currently_playing_index == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.GetSourcei(source.id, AL_BUFFERS_QUEUED, &i1);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    g_al.GetSourcei(source.id, AL_BUFFERS_PROCESSED, &i2);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    nr_buffers_in_queue[0] = i1;
+    currently_playing_index[0] = i2;
+
+    return SND_OK;
+}
+
+snd_result_t snd_source_static_buffer(snd_listener_context_t context, snd_source_t source, snd_buffer_t buffer) {
+    snd_result_t r; ALCcontext* old_con; ALint id, i;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    id = buffer.id;
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+    if(g_al.IsBuffer(buffer.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.Sourcei(source.id, AL_BUFFER, &id);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_BUFFER, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != id) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_SOURCE_TYPE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != AL_STATIC) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_source_queue_buffers(snd_listener_context_t context, snd_source_t source, uint32_t nr_buffers, snd_buffer_t* buffers) {
+    snd_result_t r; ALCcontext* old_con;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || nr_buffers <= 0 || buffers == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+#ifndef SND_NO_CHECKS
+    g_al.GetSourcei(source.id, AL_SOURCE_TYPE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != AL_STREAMING || i != AL_UNDETERMINED) {
+        return SND_ERROR_SOURCE_STATICALLY_BOUND;
+    }
+#endif
+
+    /* Since the only field of snd_buffer_t is the id, the arrays will line up.
+     * NOTE: if anything is added to the snd_buffer_t struct, rewrite this! */
+    g_al.SourceQueueBuffers(source.id, nr_buffers, (ALuint*) buffers);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_SOURCE_TYPE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != AL_STREAMING) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_source_unqueue_buffers(snd_listener_context_t context, snd_source_t source, uint32_t nr_buffers, snd_buffer_t* out_buffers) {
+    snd_result_t r; ALCcontext* old_con;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || nr_buffers <= 0 || out_buffers == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+#ifndef SND_NO_CHECKS
+    g_al.GetSourcei(source.id, AL_SOURCE_TYPE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != AL_STREAMING) {
+        return SND_ERROR_SOURCE_NO_BUFFERS_QUEUED;
+    }
+#endif
+
+    /* Since the only field of snd_buffer_t is the id, the arrays will line up.
+     * NOTE: if anything is added to the snd_buffer_t struct, rewrite this! */
+    g_al.SourceUnqueueBuffers(source.id, nr_buffers, (ALuint*) out_buffers);
+#ifndef SND_NO_CHECKS
+    switch(g_al.GetError()) {
+    case AL_NO_ERROR:
+        break;
+    case AL_INVALID_VALUE:
+        return SND_ERROR_SOURCE_NOT_ENOUGH_QUEUED_BUFFERS_FINISHED;
+    default:
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_SOURCE_TYPE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != AL_STREAMING) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_source_reset_buffer_state(snd_listener_context_t context, snd_source_t source) {
+    snd_result_t r; ALCcontext* old_con;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    if(g_al.IsSource(source.id) != AL_TRUE) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+
+    g_al.Sourcei(source.id, AL_BUFFER, NULL);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_SOURCE_TYPE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != AL_UNDETERMINED) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+
+snd_result_t snd_sources_play  (snd_listener_context_t context, uint32_t nr_sources, snd_source_t* sources) {
+    snd_result_t r; ALCcontext* old_con; ALint i;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || sources == NULL || nr_sources <= 0) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    for(int i = 0; i < nr_sources; i++) {
+        if(g_al.IsSource(sources[i].id) != AL_TRUE) {
+            return SND_ERROR_INVALID_PARAM;
+        }
+    }
+#endif
+
+    /* Since the only field of snd_source_t is the id, the arrays will line up.
+     * NOTE: if anything is added to the snd_source_t struct, rewrite this! */
+    g_al.SourcePlayv(nr_sources, sources);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != AL_PLAYING) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_sources_pause (snd_listener_context_t context, uint32_t nr_sources, snd_source_t* sources) {
+    snd_result_t r; ALCcontext* old_con;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || sources == NULL || nr_sources <= 0) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    for(int i = 0; i < nr_sources; i++) {
+        if(g_al.IsSource(sources[i].id) != AL_TRUE) {
+            return SND_ERROR_INVALID_PARAM;
+        }
+    }
+#endif
+
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    /* Since the only field of snd_source_t is the id, the arrays will line up.
+     * NOTE: if anything is added to the snd_source_t struct, rewrite this! */
+    g_al.SourcePausev(nr_sources, sources);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    /* Only for AL_PLAYING sources does the spec guarentee state change */
+    if(i == AL_PLAYING) {
+        g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+        if(i != AL_PAUSED) {
+            return SND_ERROR_UNKNOWN;
+        }
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_sources_stop  (snd_listener_context_t context, uint32_t nr_sources, snd_source_t* sources) {
+    snd_result_t r; ALCcontext* old_con;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || sources == NULL || nr_sources <= 0) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    for(int i = 0; i < nr_sources; i++) {
+        if(g_al.IsSource(sources[i].id) != AL_TRUE) {
+            return SND_ERROR_INVALID_PARAM;
+        }
+    }
+#endif
+
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    /* Since the only field of snd_source_t is the id, the arrays will line up.
+     * NOTE: if anything is added to the snd_source_t struct, rewrite this! */
+    g_al.SourceStopv(nr_sources, sources);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    /* Only for AL_PLAYING and AL_PAUSED sources does the spec guarentee state change */
+    if(i == AL_PLAYING || i == AL_PAUSED) {
+        g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+        if(i != AL_PAUSED) {
+            return SND_ERROR_UNKNOWN;
+        }
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+    return SND_OK;
+}
+snd_result_t snd_sources_rewind(snd_listener_context_t context, uint32_t nr_sources, snd_source_t* sources) {
+    snd_result_t r; ALCcontext* old_con;
+    
+#ifndef SND_NO_CHECKS
+    if(context.handle == NULL || sources == NULL || nr_sources <= 0) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    
+    r = snd_context_set(context.handle, &old_con);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
+#ifndef SND_NO_CHECKS
+    for(int i = 0; i < nr_sources; i++) {
+        if(g_al.IsSource(sources[i].id) != AL_TRUE) {
+            return SND_ERROR_INVALID_PARAM;
+        }
+    }
+#endif
+
+    /* Since the only field of snd_source_t is the id, the arrays will line up.
+     * NOTE: if anything is added to the snd_source_t struct, rewrite this! */
+    g_al.SourceRewindv(nr_sources, sources);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+#ifdef SND_DEBUG
+    g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+    if(i != AL_INITIAL) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+
+    r = snd_context_set(old_con, NULL);
+#ifndef SND_NO_CHECKS
+    if(r != SND_OK) { return r; }
+#endif
+
     return SND_OK;
 }
 
 
 
 
+/*
+
+List of AL stuff to use / implement:
+
+funcions loaded above that may be unnecessary:
+alGetString, alListenerf, alGetListenerf, alSourcef, alGetSourcef
 
 
 
 
-snd_result_t snd_mic_infos(int *nr_mics, const snd_mic_info_t **infos);
-snd_result_t snd_mic_record(int mic_id,  .. );
+unnecessary:
+            we dont use extensions, so none of these are necessary
+alGetProcAddress, alcGetProcAddress, alIsExtensionPresent, alcIsExtensionPresent, alGetEnumValue, alcGetEnumValue
+ALC_EXTENSIONS  string, global
+AL_EXTENSIONS       1i
+            standard AL has no capabilities
+alEnable, alDisable, alIsEnabled
+            there are no query destinations for that
+alGetBooleanv, alGetIntegerv, alGetFloatv, alGetDoublev, alGetBoolean, alGetDouble
+            similar
+al[Get]Listeneri, alBufferf, alBuffer3f, alBufferfv, alBufferi, alBuffer3i, alBufferiv, alGetBufferf, alGetBuffer3f, alGetBufferfv, alGetBuffer3i, alSource3i, alGetSource3i
+
+            are unnecessary:
+al[Get]Listener[3f|3i|iv], alGetBufferiv, alSourcef, alSource3f, alSourceiv, alGetSourcef, alGetSource3f, alGetSourceiv
+
+            are the same as synchronized v versions with n == 1
+alSourcePlay, alSourceStop, alSourceRewind, alSourcePause
+
+        these are useless bc we can't use this to extrapolate anything
+alcGetIntegerv
+    ALC_MAJOR_VERSION           1i
+    ALC_MINOR_VERSION           1i
+alGetString
+    AL_VENDOR
+    AL_VERSION
+    AL_RENDERER
+    
+deprecated:
+alDopplerVelocity - no use at all, see https://github.com/kcat/openal-soft/pull/1122
 
 
-snd_result_t snd_speaker_infos(int *nr_speakers, const snd_speaker_info_t **infos);
-snd_result_t snd_speaker_switch(int speaker_id);
 
 
 
-/* context check? or adding in context mark in snd_source_t ? */
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+*/
+
+/*   OLD sources functions; maybe extract constraints?
+ * 
+ * context check? or adding in context mark in snd_source_t ? 
 snd_result_t snd_source_create(snd_source_state_t state, snd_source_t* source) {
     ALuint id;
 
@@ -625,8 +2369,6 @@ snd_result_t snd_source_state_set(snd_source_t source, snd_source_state_t state)
     return SND_OK;
 }
 
-
-
 snd_result_t snd_source_destroy(snd_source_t source) {
     if(g_al.IsSource(source) != AL_TRUE) {
         return SND_ERROR_INVALID_PARAM;
@@ -643,218 +2385,9 @@ snd_result_t snd_source_destroy(snd_source_t source) {
     return SND_OK;
 }
 
-
-
-
-
     alSourcei
-
-
 AL_BUFFER
 AL_SOURCE_STATE
 
 
-
-
-
-/*
-
-List of AL stuff to use / implement:
-
-funcions loaded above that may be unnecessary:
-alGetString, alListenerf, alListenerf, alGetListenerf, alSourcef, alGetSourcef
-
-
-
-constant use:
-alcGetError, alGetError
-
-
-global gets:
-
-alcGetString             these give, with device = NULL, defaults and enumerations
-    ALC_DEFAULT_DEVICE_SPECIFIER            string
-    ALC_DEVICE_SPECIFIER                    string
-    ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER    string
-    ALC_CAPTURE_DEVICE_SPECIFIER            string
-    
-
-
-
-Mic:
-alcCaptureOpenDevice
-alcCaptureCloseDevice
-alcCaptureStart
-alcCaptureStop
-alcCaptureSamples
-
-alcGetString
-    ALC_CAPTURE_DEVICE_SPECIFIER            string      returns name, debug
-
-
-Device:
-alcOpenDevice
-alcCloseDevice
-
-alcGetString
-    ALC_DEVICE_SPECIFIER                    string      returns name, debug
-
-
-Context / Listener / Global AL (not ALC):
-alcCreateContext
-alcMakeContextCurrent
-alcDestroyContext
-
-alcProcessContext       unclear what they do, but maybe relevant
-alcSuspendContext
-
-alDopplerFactor, alSpeedOfSound, alDistanceModel
-
-        use functions f for gain and fv for all else; Get only for debug
-        or can we just use fv? maybe the guide is just limited there,
-        since the spec explicitly allows it
-al[Get]Listener[f|fv]
-    AL_GAIN             f
-    AL_POSITION         3f
-    AL_VELOCITY         3f
-    AL_ORIENTATION      6f
-
-
-debug: to compare our values are right
-
-alcGetCurrentContext
-alcGetContextsDevice
-
-alcGetIntegerv
-    ALC_ATTRIBUTES_SIZE
-    ALC_ALL_ATTRIBUTES
-
-alGetInteger
-    AL_DISTANCE_MODEL       1e
-alGetFloat      
-    AL_DOPPLER_FACTOR       1f
-    AL_SPEED_OF_SOUND       1f
-    
-    
-
-
-
-
-Buffer:
-alGenBuffers
-alBufferData
-alDeleteBuffers
-
-debug:
-alIsBuffer
-alGetBufferi
-    AL_FREQUENCY
-    AL_BITS
-    AL_CHANNELS
-    AL_SIZE
-    AL_DATA [? not in spec, but in guide - there given as useless too]
-        AL_DATA is not even defined in al.h so we should probably ignore it.
-
-
-    
-    
-Source:
-
-
-alGenSources
-alDeleteSources
-
-
-al[Get]Source[fv|i]             for real changes and getting for debug, or for real getters:
-    AL_PITCH                        1f
-    AL_GAIN                         1f
-    AL_MIN_GAIN                     1f
-    AL_MAX_GAIN                     1f
-    AL_MAX_DISTANCE                 1f
-    AL_ROLLOFF_FACTOR               1f
-    AL_CONE_OUTER_GAIN              1f
-    AL_CONE_INNER_ANGLE             1f
-    AL_CONE_OUTER_ANGLE             1f
-    AL_REFERENCE_DISTANCE           1f
-    AL_POSITION                     3f
-    AL_VELOCITY                     3f
-    AL_DIRECTION                    3f
-    AL_SOURCE_RELATIVE              1b
-    AL_LOOPING                      1b
-    AL_BUFFER                       1i      the buffer id, can only be changed when not playing
-    AL_SOURCE_STATE                 1e
-    AL_SEC_OFFSET                   1f      [not in guide]
-    AL_SAMPLE_OFFSET                1f      [not in guide]
-    AL_BYTE_OFFSET                  1f      [not in guide]
-    
-    only getter:
-    AL_SOURCE_TYPE                  1i [not in guide in right place]
-    AL_BUFFERS_QUEUED               1i
-    AL_BUFFERS_PROCESSED            1i
-    
-
-alSourcePlayv
-alSourceStopv
-alSourceRewindv
-alSourcePausev
-alSourceQueueBuffers
-alSourceUnqueueBuffers
-
-debug:
-alIsSource
-
-
-
-
-
-
-
-
-unnecessary:
-            we dont use extensions, so none of these are necessary
-alGetProcAddress, alcGetProcAddress, alIsExtensionPresent, alcIsExtensionPresent, alGetEnumValue, alcGetEnumValue
-ALC_EXTENSIONS  string, global
-AL_EXTENSIONS       1i
-            standard AL has no capabilities
-alEnable, alDisable, alIsEnabled
-            there are no query destinations for that
-alGetBooleanv, alGetIntegerv, alGetFloatv, alGetDoublev, alGetBoolean, alGetDouble
-            similar
-al[Get]Listeneri, alBufferf, alBuffer3f, alBufferfv, alBufferi, alBuffer3i, alBufferiv, alGetBufferf, alGetBuffer3f, alGetBufferfv, alGetBuffer3i, alSource3i, alGetSource3i
-
-            are unnecessary:
-al[Get]Listener[3f|3i|iv], alGetBufferiv, alSourcef, alSource3f, alSourceiv, alGetSourcef, alGetSource3f, alGetSourceiv
-
-            are the same as synchronized v versions with n == 1
-alSourcePlay, alSourceStop, alSourceRewind, alSourcePause
-
-        these are useless bc we can't use this to extrapolate anything
-alcGetIntegerv
-    ALC_MAJOR_VERSION           1i
-    ALC_MINOR_VERSION           1i
-alGetString
-    AL_VENDOR
-    AL_VERSION
-    AL_RENDERER
-    
-deprecated:
-alDopplerVelocity - no use at all, see https://github.com/kcat/openal-soft/pull/1122
-
-
-
-
-
-
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
 */
-
