@@ -922,3 +922,101 @@ void nonlocalenvironmentjump_restore_callingenvironment_from_jump_buffer_data_an
  *
  * iscanonical and canonicalize, since all representations are usually canonical
  */
+
+
+
+
+
+
+
+
+
+
+/* reduced version of sr_webcam (https://github.com/kosua20/sr_webcam): */
+
+
+typedef struct _sr_webcam_device {
+    /* should not be changed in the middle */
+	int deviceId;
+    
+    /* changeable */
+	int width;
+	int height;
+	int framerate;
+	void* user;
+	sr_webcam_callback callback;
+    
+    /* should be set to 0, NULL at the beginning and not touched */
+	int running;
+	void* stream;
+} sr_webcam_device;
+
+/* data is a pointer to usually RGB data */
+typedef void (*sr_webcam_callback)(sr_webcam_device* device, void* data);
+
+int sr_webcam_open(sr_webcam_device* device);
+    reads width, height, framerate, deviceId -- sets those + stream
+    and sets up callback as something that is called later through a pointer
+        (i.e any change comes through dynamically)
+    specifically on macos, width and height is also compared to
+    so it probably should not be changed later!
+void sr_webcam_start(sr_webcam_device* device);
+    reads / changes stream + running
+void sr_webcam_stop(sr_webcam_device* device);
+    reads / changes stream + running
+void sr_webcam_delete(sr_webcam_device* device);
+    reads / changes stream + running
+
+
+i.e. the real interface of this lib is:
+
+
+
+
+typedef void* webcam_t;
+typedef void (*webcam_callback_t)(webcam_t cam, void* data); /* data is RGB-image with size as dimensions returned in the in-out width/height params */
+
+webcam_t webcam_open(int id, int* width, int* height, int* framerate, webcam_callback_t callback); /* all pointer params are in-out! */
+void webcam_change_callback(webcam_t cam, webcam_callback_t callback);
+void webcam_start(webcam_t cam);
+void swebcam_stop(webcam_t cam);
+void webcam_delete(webcam_t cam);
+
+
+
+
+webcam_t webcam_open(int id, int* width, int* height, int* framerate, webcam_callback_t callback) {
+    sr_webcam_device* dev; int code;
+    code = sr_webcam_create(&dev, id);
+    if(code < 0) {
+        webcam_delete((webcam_t)dev);
+        return NULL;
+    }
+    sr_webcam_set_format(dev, width[0], height[0], framerate[0]);
+    sr_webcam_set_callback(dev, callback);
+    code = sr_webcam_open(dev);
+    if(code < 0) {
+        webcam_delete((webcam_t)dev);
+        return NULL;
+    }
+    sr_webcam_get_dimensions(dev, width, height);
+    sr_webcam_get_framerate(dev, framerate);
+    return (webcam_t)dev;
+}
+void webcam_change_callback(webcam_t cam, webcam_callback_t callback) {
+    sr_webcam_device* dev = (sr_webcam_device*) cam;
+    sr_webcam_set_callback(dev, callback);
+}
+void webcam_start(webcam_t cam) {
+    sr_webcam_device* dev = (sr_webcam_device*) cam;
+    sr_webcam_start(dev);
+}
+void swebcam_stop(webcam_t cam) {
+    sr_webcam_device* dev = (sr_webcam_device*) cam;
+    sr_webcam_stop(dev);
+}
+void webcam_delete(webcam_t cam) {
+    sr_webcam_device* dev = (sr_webcam_device*) cam;
+    sr_webcam_delete(dev);
+}
+
