@@ -36,9 +36,6 @@ bool32_t RtlGenRandom(void* RandomBuffer, uint32_t RandomBufferLength);
     3. This notice may not be removed or altered from any source
         distribution.
 */
-
-
-
 static time_info_t g_time_info;
 time_info_t* time_now(bool local_time) {
     struct tm time_struct, utc_struct;
@@ -73,7 +70,9 @@ time_info_t* time_now(bool local_time) {
     g_time_info.day_of_year  = time_struct.tm_yday;
     g_time_info.month        = (time_month_t) time_struct.tm_mon;
     g_time_info.day_of_month = time_struct.tm_mday;
-    g_time_info.weekday      = (time_weekday_t) time_struct.tm_wday;
+    /* we have to recalculate to start with Monday, not Sunday */
+    g_time_info.weekday      = (time_weekday_t) ((time_struct.tm_wday - 1)%7);
+    g_time_info.week_in_year = (uint8_t) floor((float)(g_time_info.day_of_year - g_time_info.weekday) / 7.0f) + 1;
     g_time_info.hours        = time_struct.tm_hour;
     g_time_info.minutes      = time_struct.tm_min;
     g_time_info.seconds      = time_struct.tm_sec;
@@ -170,8 +169,6 @@ uint64_t prng_value(void) {
 
     return result;
 }
-
-
 
 uint64_t entropy_uint64(void) {
     uint64_t val;
@@ -350,3 +347,43 @@ size_t str_len(str_t s);
 str_t str_concat(str_t s, char* text);
 str_t str_concat_int(str_t s, int64_t i);
 str_t str_concat_float(str_t s, double d);
+
+
+
+
+
+
+
+
+/* webcam library based on sr_webcam (https://github.com/kosua20/sr_webcam): */
+
+webcam_t webcam_open(int id, int* width, int* height, int* framerate, webcam_callback_t callback) {
+    sr_webcam_device* dev; int code;
+    code = sr_webcam_create(&dev, id);
+    if(code < 0) {
+        webcam_delete((webcam_t)dev);
+        return NULL;
+    }
+    sr_webcam_set_format(dev, width[0], height[0], framerate[0]);
+    sr_webcam_set_callback(dev, callback);
+    code = sr_webcam_open(dev);
+    if(code < 0) {
+        webcam_delete((webcam_t)dev);
+        return NULL;
+    }
+    sr_webcam_get_dimensions(dev, width, height);
+    sr_webcam_get_framerate(dev, framerate);
+    return (webcam_t)dev;
+}
+void webcam_start(webcam_t cam) {
+    sr_webcam_device* dev = (sr_webcam_device*) cam;
+    sr_webcam_start(dev);
+}
+void swebcam_stop(webcam_t cam) {
+    sr_webcam_device* dev = (sr_webcam_device*) cam;
+    sr_webcam_stop(dev);
+}
+void webcam_close(webcam_t cam) {
+    sr_webcam_device* dev = (sr_webcam_device*) cam;
+    sr_webcam_delete(dev);
+}

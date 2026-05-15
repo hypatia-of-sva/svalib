@@ -660,7 +660,7 @@ typedef enum time_weekday_t {
 } time_weekday_t;
 typedef struct time_info_t {
     int32_t             year;
-    uint16_t            day_of_year
+    uint16_t            day_of_year, week_in_year;
     time_month_t        month;
     uint8_t             day_of_month;
     time_weekday_t      weekday;
@@ -749,6 +749,104 @@ typedef struct str_view_t {
 
 
 
+
+better idea:
+
+
+typedef enum buf_result_t {
+    BUF_OK = 0,
+    
+} buf_result_t;
+
+typedef struct {
+    uint8_t* byte_ptr;
+    size_t len, cap;
+} *buf_t, const *cbuf_t;
+typedef struct slice_t {
+    uint8_t* byte_ptr;
+    size_t len;
+} *slice_t, const *cslice_t;
+typedef struct view_t {
+    const uint8_t* byte_ptr;
+    size_t len;
+} *view_t, const *cview_t;
+
+
+buf_result_t buf_alloc(buf_t b, size_t size, size_t align, size_t offset);
+buf_result_t buf_reserve(buf_t b, size_t new_cap)
+    { return buf_resize(b, b.cap+new_cap); }
+buf_result_t buf_resize(buf_t b, size_t new_cap);
+buf_result_t buf_copy(buf_t dst, view_t src, size_t dst_offset);
+buf_result_t buf_concat(buf_t dst, view_t src)
+    { return buf_copy(dst, src, dst.len); }
+
+void buf_free(buf_t b);
+
+slice_t slice_sub(slice_t s, size_t begin, size_t end);
+void slice_zero(slice_t s);
+
+view_t view_str(const char* str);
+view_t view_sub(view_t v, size_t begin, size_t end);
+bool view_equals(view_t a, view_t b);
+view_t view_find(view_t v1, view_t v2); // returns NULL if not there
+view_t view_find_last(view_t v1, view_t v2);
+
+buf_result_t view_split_by_byte(view_t v, uint8_t delim, buf_t* bufs, size_t nr_bufs);
+buf_result_t view_split_by_view(view_t v, view_t delim, buf_t* bufs, size_t nr_bufs);
+
+// util functions that are basically just casts
+void buf_zero(buf_t b) { slice_zero((slice_t)b); }
+slice_t buf_slice(buf_t b) { return (slice_t) b; }
+view_t buf_view(buf_t b) { return (view_t) b; }
+slice_t buf_subslice(buf_t b, size_t begin, size_t end)
+view_t buf_subview(buf_t b, size_t begin, size_t end)
+    { return view_sub((view_t) b, begin, end); }
+bool buf_equals(buf_t a, buf_t b)
+    { return view_equals((view_t) a, (view_t)b); }
+view_t buf_find(buf_t b, view_t v)
+    { return view_find((view_t) b, (view_t)v); }
+view_t buf_find_last(buf_t b, view_t v)
+    { return view_find_last((view_t) b, (view_t)v); }
+
+view_t slice_subview(slice_t s, size_t begin, size_t end)
+    { return view_sub((view_t) s, begin, end); }
+view_t slice_view(slice_t s) { return (view_t) s; }
+bool slice_equals(slice_t a, slice_t b)
+    { return view_equals((view_t) a, (view_t)b); }
+view_t slice_find(slice_t s, view_t v)
+    { return view_find(view_t) s, (view_t)v); }
+view_t slice_find_last(slice_t s, view_t v)
+    { return view_find_last(view_t) s, (view_t)v); }
+
+
+
+
+
+
+
+// much, much simpler interface for just raw pointers:
+
+
+
+void* mem_alloc(size_t cap, size_t align, size_t offset);
+void* mem_resize(void* ptr, size_t old_cap, size_t new_cap);
+void mem_copy(void* dst, size_t dst_cap, void* src, size_t src_cap, size_t len);
+void mem_free(void* ptr, size_t cap);
+void mem_zero(void* ptr, size_t len);
+
+void* mem_from_str(const char* str);
+bool mem_equals(void* a, void* b, size_t len);
+void* mem_find(const void* area, size_t cap, const void* search, size_t search_cap); // returns NULL if not there
+void* mem_find_last(const void* area, size_t cap, const void* search, size_t search_cap);
+
+buf_result_t view_split_by_byte(view_t v, uint8_t delim, buf_t* bufs, size_t nr_bufs);
+buf_result_t view_split_by_view(view_t v, view_t delim, buf_t* bufs, size_t nr_bufs);
+
+
+
+
+
+
 typedef enum char_type_t {
     CHAR_TYPE_CONTROL = 0,
     CHAR_TYPE_LETTER_LOWERCASE = 1,
@@ -766,7 +864,7 @@ uint32_t char_to_lowercase(uint32_t character);
 /* I/O and Filesystem library */
 
 
-typedef str_view_t path_t;
+typedef buf_t path_t;
 
 bool32_t path_exists(path_t p);
 path_t   path_make_absolute(path_t p);
@@ -932,91 +1030,20 @@ void nonlocalenvironmentjump_restore_callingenvironment_from_jump_buffer_data_an
 
 
 
-/* reduced version of sr_webcam (https://github.com/kosua20/sr_webcam): */
-
-
-typedef struct _sr_webcam_device {
-    /* should not be changed in the middle */
-	int deviceId;
-    
-    /* changeable */
-	int width;
-	int height;
-	int framerate;
-	void* user;
-	sr_webcam_callback callback;
-    
-    /* should be set to 0, NULL at the beginning and not touched */
-	int running;
-	void* stream;
-} sr_webcam_device;
-
-/* data is a pointer to usually RGB data */
-typedef void (*sr_webcam_callback)(sr_webcam_device* device, void* data);
-
-int sr_webcam_open(sr_webcam_device* device);
-    reads width, height, framerate, deviceId -- sets those + stream
-    and sets up callback as something that is called later through a pointer
-        (i.e any change comes through dynamically)
-    specifically on macos, width and height is also compared to
-    so it probably should not be changed later!
-void sr_webcam_start(sr_webcam_device* device);
-    reads / changes stream + running
-void sr_webcam_stop(sr_webcam_device* device);
-    reads / changes stream + running
-void sr_webcam_delete(sr_webcam_device* device);
-    reads / changes stream + running
-
-
-i.e. the real interface of this lib is:
 
 
 
 
+/* webcam library based on sr_webcam (https://github.com/kosua20/sr_webcam): */
 typedef void* webcam_t;
-typedef void (*webcam_callback_t)(webcam_t cam, void* data); /* data is RGB-image with size as dimensions returned in the in-out width/height params */
+typedef void (*webcam_callback_t)(webcam_t cam, void* data); /* data is RGB-image with buffersize 3*width*height with the out-values of the open function */
 
 webcam_t webcam_open(int id, int* width, int* height, int* framerate, webcam_callback_t callback); /* all pointer params are in-out! */
-void webcam_change_callback(webcam_t cam, webcam_callback_t callback);
 void webcam_start(webcam_t cam);
 void swebcam_stop(webcam_t cam);
-void webcam_delete(webcam_t cam);
+void webcam_close(webcam_t cam);
 
 
 
 
-webcam_t webcam_open(int id, int* width, int* height, int* framerate, webcam_callback_t callback) {
-    sr_webcam_device* dev; int code;
-    code = sr_webcam_create(&dev, id);
-    if(code < 0) {
-        webcam_delete((webcam_t)dev);
-        return NULL;
-    }
-    sr_webcam_set_format(dev, width[0], height[0], framerate[0]);
-    sr_webcam_set_callback(dev, callback);
-    code = sr_webcam_open(dev);
-    if(code < 0) {
-        webcam_delete((webcam_t)dev);
-        return NULL;
-    }
-    sr_webcam_get_dimensions(dev, width, height);
-    sr_webcam_get_framerate(dev, framerate);
-    return (webcam_t)dev;
-}
-void webcam_change_callback(webcam_t cam, webcam_callback_t callback) {
-    sr_webcam_device* dev = (sr_webcam_device*) cam;
-    sr_webcam_set_callback(dev, callback);
-}
-void webcam_start(webcam_t cam) {
-    sr_webcam_device* dev = (sr_webcam_device*) cam;
-    sr_webcam_start(dev);
-}
-void swebcam_stop(webcam_t cam) {
-    sr_webcam_device* dev = (sr_webcam_device*) cam;
-    sr_webcam_stop(dev);
-}
-void webcam_delete(webcam_t cam) {
-    sr_webcam_device* dev = (sr_webcam_device*) cam;
-    sr_webcam_delete(dev);
-}
 
