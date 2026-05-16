@@ -839,8 +839,159 @@ bool mem_equals(void* a, void* b, size_t len);
 void* mem_find(const void* area, size_t cap, const void* search, size_t search_cap); // returns NULL if not there
 void* mem_find_last(const void* area, size_t cap, const void* search, size_t search_cap);
 
-buf_result_t view_split_by_byte(view_t v, uint8_t delim, buf_t* bufs, size_t nr_bufs);
-buf_result_t view_split_by_view(view_t v, view_t delim, buf_t* bufs, size_t nr_bufs);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// different idea: two kinds of strings
+// a: string identifiers, only there to be copied and compared:
+// these have the length at index -1 and are capped to 254 chars
+typedef const char* strid_t;
+#define STRID_INVALID ((strid_t)NULL)
+strid_t strid(const char* str);
+strid_t strid_from_len(const char* str, size_t len);
+strid_t strid_dup(strid_t id);
+bool strid_equals(strid_t a, strid_t b);
+int strid_cmp(strid_t a, strid_t b);
+int strid_subindex(strid_t outer, strid_t inner);
+void strid_free(strid_t id);
+size_t strid_len(strid_t id);
+
+
+
+// b: string format buffers, for concatting / formatting into and parsing out of:
+
+
+
+
+
+
+typedef enum strbuf_pad_type_t {
+    STRBUF_PAD_TYPE_RIGHT = 0,
+    STRBUF_PAD_TYPE_LEFT = 1,
+    STRBUF_PAD_TYPE_MAX_ENUM = 0x7f
+} strbuf_pad_type_t;
+typedef enum strbuf_sign_behavior_t {
+    STRBUF_SIGN_BEHAVIOR_ONLY_NEGATIVE = 0,
+    STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_PLUS = 1,
+    STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_SPACE = 2,
+    STRBUF_SIGN_BEHAVIOR_MAX_ENUM = 0x7f
+} strbuf_sign_behavior_t;
+typedef enum strbuf_int_format_t {
+    STRBUF_INT_FORMAT_DECIMAL = 0,
+    STRBUF_INT_FORMAT_OCTAL = 1,
+    STRBUF_INT_FORMAT_OCTAL_WITH_PREFIX_NONZERO = 2,
+    STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE = 3,
+    STRBUF_INT_FORMAT_HEXADECIMAL_UPPER_CASE = 4,
+    STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX_NONZERO = 5,
+    STRBUF_INT_FORMAT_HEXADECIMAL_UPPER_CASE_WITH_PREFIX_NONZERO = 6,
+    STRBUF_INT_FORMAT_MAX_ENUM = 0x7f
+} strbuf_int_format_t;
+typedef enum strbuf_float_format_t {
+    STRBUF_FLOAT_FORMAT_NO_EXPONENT = 0,
+    STRBUF_FLOAT_FORMAT_NO_EXPONENT_FORCE_DECIMAL_POINT = 1,
+    STRBUF_FLOAT_FORMAT_SCIENTIFIC = 2,
+    STRBUF_FLOAT_FORMAT_SCIENTIFIC_UPPER_CASE_E = 3,
+    STRBUF_FLOAT_FORMAT_SCIENTIFIC_FORCE_DECIMAL_POINT = 4,
+    STRBUF_FLOAT_FORMAT_SCIENTIFIC_FORCE_DECIMAL_POINT_UPPER_CASE_E = 5,
+    STRBUF_FLOAT_FORMAT_MIXED = 6,
+    STRBUF_FLOAT_FORMAT_MIXED_UPPER_CASE_E = 7,
+    STRBUF_FLOAT_FORMAT_MIXED_FORCE_DECIMAL_POINT = 8,
+    STRBUF_FLOAT_FORMAT_MIXED_FORCE_DECIMAL_POINT_UPPER_CASE_E = 9,
+    STRBUF_FLOAT_FORMAT_MAX_ENUM = 0x7f
+} strbuf_float_format_t;
+
+
+typedef struct strbuf_t {
+    char* str;
+    size_t len, cap;
+} strbuf_t;
+typedef struct format_params_t {
+    uint32_t min_length, precision;
+    strbuf_pad_type_t pad_type;
+    char pad_char;
+    strbuf_sign_behavior_t sign_behavior;
+} format_params_t;
+#define STRBUF_ALLOCATION_FAILURE (strbuf_t)({NULL,0,0})
+#define STRBUF_ERROR (strbuf_t)({NULL,1,0})
+
+strbuf_t strbuf_from_str(char* str); // str needs to have been _allocated_ by the standard allocator (like strids), otherwise use strbuf_concat
+strbuf_t strbuf_alloc(size_t initial_cap);
+strbuf_t strbuf_reserve(strbuf_t b, size_t additional_cap);
+strbuf_t strbuf_resize(strbuf_t b, size_t new_min_cap);
+strbuf_t strbuf_dup(strbuf_t b);
+void strbuf_free(strbuf_t b);
+strbuf_t strbuf_zero(strbuf_t b);
+    // the next six functions return != buf for range or allocation failure. end is _inclusive_, begin/end are 0-indexed
+strbuf_t strbuf_replace_range(strbuf_t buf, size_t begin, size_t end, const char* str);
+strbuf_t strbuf_replace_range_len(strbuf_t buf, size_t begin, size_t end, const char* str, size_t len);
+strbuf_t strbuf_dup_slice(strbuf_t buf, size_t begin, size_t end);
+strbuf_t strbuf_split_by_char(strbuf_t buf, char delim, strbuf_t** bufs, size_t* nr_bufs);
+strbuf_t strbuf_split_by_str(strbuf_t buf, char* delim, strbuf_t** bufs, size_t* nr_bufs);
+strbuf_t strbuf_split_by_str_len(strbuf_t buf, char* delim, size_t delim_len, strbuf_t** bufs, size_t* nr_bufs);
+
+bool strbuf_equals(strbuf_t a, strbuf_t b);    // NOTE: this function treats buffers with the same content and lengths but different caps as the same
+int strbuf_cmp(strbuf_t a, strbuf_t b);
+int strbuf_find_subindex(strbuf_t outer, size_t offset, strid_t inner);
+int strbuf_find_last_subindex(strbuf_t outer, size_t offset, strid_t inner);
+
+strbuf_t strbuf_concat(strbuf_t buf, const char* str);
+strbuf_t strbuf_concat_len(strbuf_t buf, const char* str, size_t len);
+// use params = NULL for default params (default sign behavior, no padding, default precision etc.) and format = 0 for default format (%u or %f respectively)
+strbuf_t strbuf_concat_int8(strbuf_t buf, int8_t val, format_params_t* params);
+strbuf_t strbuf_concat_int16(strbuf_t buf, int16_t val, format_params_t* params);
+strbuf_t strbuf_concat_int32(strbuf_t buf, int32_t val, format_params_t* params);
+strbuf_t strbuf_concat_int64(strbuf_t buf, int64_t val, format_params_t* params);
+strbuf_t strbuf_concat_uint8(strbuf_t buf, uint8_t val, format_params_t* params, strbuf_int_format_t format);
+strbuf_t strbuf_concat_uint16(strbuf_t buf, uint16_t val, format_params_t* params, strbuf_int_format_t format);
+strbuf_t strbuf_concat_uint32(strbuf_t buf, uint32_t val, format_params_t* params, strbuf_int_format_t format);
+strbuf_t strbuf_concat_uint64(strbuf_t buf, uint64_t val, format_params_t* params, strbuf_int_format_t format);
+strbuf_t strbuf_concat_float32(strbuf_t buf, float32_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format);
+strbuf_t strbuf_concat_float64(strbuf_t buf, float64_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format);
+strbuf_t strbuf_concat_char(strbuf_t buf, char val);
+strbuf_t strbuf_concat_ptr(strbuf_t buf, void* ptr);
+
+// all of these return the length of what's parsed, typically to be +=-ed to the offset variable
+// width = 0 is the default behavior, and will set it to ignore the width, with a number > 0 it will not consume more than those chars (and in the case of strbuf_read_char _exactly_ that many chars)
+size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expected_const);
+size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t allowed_chars_first, strid_t allowed_chars, strid_t* out_id);
+size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id); // inverse bc it excludes instead
+size_t strbuf_read_decimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out);
+size_t strbuf_read_octal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
+size_t strbuf_read_hexadecimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
+size_t strbuf_read_decimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out);
+size_t strbuf_read_octal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out, bool expect_prefix);
+size_t strbuf_read_hexadecimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out, bool expect_prefix);
+size_t strbuf_read_float_literal(strbuf_t buf, size_t offset, size_t width, float64_t* out, bool allow_exponent);
+size_t strbuf_read_char(strbuf_t buf, size_t offset, size_t width, char* out);
+size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

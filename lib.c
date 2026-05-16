@@ -195,9 +195,298 @@ uint64_t entropy_uint64(void) {
 
 
 
+strid_t strid(const char* str) {
+    return strid_from_len(str, strlen(str));
+}
+strid_t strid_from_len(const char* str, size_t len) {
+    uint8_t* buf;
+    // max 254 chars so that the max allocation size is 256 bytes == 4 cache lines
+    if(len > 254) return STRID_INVALID;
+    buf = calloc(len+2, 1);
+    if(buf == NULL) return STRID_INVALID;
+    buf[0] = len;
+    memcpy(&buf[1], str, len);
+    return &buf[1];
+}
+strid_t strid_dup(strid_t id) {
+    return strid_from_len(id, id[-1]);
+}
+bool strid_equals(strid_t a, strid_t b) {
+    if(a[-1] != b[-1]) return false;
+    else return (strcmp((const char*)a,(const char*)b) == 0);
+}
+int strid_cmp(strid_t a, strid_t b) {
+    return strcmp((const char*)a,(const char*)b);
+}
+int strid_subindex(strid_t outer, strid_t inner) {
+    int i, inner_len = inner[-1], outer_len = outer[-1];
+    char initial;
+    if(inner_len > outer_len) return -1;
+                // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
+    else if(inner_len == outer_len) return (strid_equals(outer, inner)-1);
+    
+    initial = inner[0];
+    for(i = 0; i < outer_len - inner_len + 1; i++) {
+        if(outer[i] == initial && strncmp(&outer[i], inner, inner_len) == 0)
+            return i;
+    }
+    return -1;
+}
+void strid_free(strid_t id) {
+    free(&id[-1]);
+}
+size_t strid_len(strid_t id) {
+    return (size_t)id[-1];
+}
 
 
 
+
+    // str needs to have been _allocated_ by the standard allocator (like strids), otherwise use strbuf_concat
+strbuf_t strbuf_from_str(char* str) {
+    strbuf_t b;
+    b.str = str;
+    b.len = strlen(str);
+    b.cap = b.len + 1;
+    return b;
+}
+strbuf_t strbuf_alloc(size_t initial_cap) {
+    strbuf_t b;
+    b.cap = initial_cap+1;
+    b.len = 0;
+    b.str = calloc(1, initial_cap+1);
+    if(b.str == NULL) return STRBUF_ALLOCATION_FAILURE;
+    else return b;
+}
+strbuf_t strbuf_reserve(strbuf_t b, size_t additional_cap) {
+    return strbuf_resize(b, b.cap+additional_cap);
+}
+strbuf_t strbuf_resize(strbuf_t b, size_t new_min_cap) {
+    char* newbuf;
+    size_t new_cap = size_min(new_min_cap, b.len+1);
+    newbuf = realloc(b.str, new_cap+1);
+    if(newbuf == NULL) return STRBUF_ALLOCATION_FAILURE;
+    b.str = newbuf;
+    return b;
+}
+strbuf_t strbuf_dup(strbuf_t b) {
+    strbuf_t bret;
+    bret.cap = b.cap;
+    bret.len = b.len;
+    bret.str = calloc(1, b.cap);
+    if(bret.str == NULL) return STRBUF_ALLOCATION_FAILURE;
+    memmove(bret.str, b.str, b.cap);
+    return bret;
+}
+void strbuf_free(strbuf_t b) {
+    free(b.str);
+}
+strbuf_t strbuf_zero(strbuf_t b) {
+    memset(b.str, 0, b.cap);
+    b.len = 0;
+    return b;
+}
+   // the next six functions return != buf for range or allocation failure. end is _inclusive_, begin/end are 0-indexed
+strbuf_t strbuf_replace_range(strbuf_t buf, size_t begin, size_t end, const char* str) {
+    size_t end = end_index+1;
+    return strbuf_replace_range_len(buf, begin, end, str, strlen(str));
+}
+strbuf_t strbuf_replace_range_len(strbuf_t buf, size_t begin, size_t end_index, const char* str, size_t len) {
+    size_t end = end_index+1;
+    if(begin >= end || len < end - begin) return STRBUF_ERROR;
+    if(end > buf.cap) (void) strbuf_resize(buf, end);
+    memmove(&buf.str[begin], str, end-begin);
+    return buf;
+}
+strbuf_t strbuf_dup_slice(strbuf_t buf, size_t begin, size_t end_index) {
+    strbuf_t bret; size_t end = end_index+1;
+    if(begin > buf.cap || end > buf.cap || begin >= end) return STRBUF_ERROR;
+    bret.cap = end-begin+1;
+    bret.len = end-begin;
+    bret.str = calloc(1, bret.cap);
+    if(bret.str == NULL) return STRBUF_ALLOCATION_FAILURE;
+    memmove(bret.str, &buf.str[begin], bret.len);
+    return bret;
+}
+strbuf_t strbuf_split_by_char(strbuf_t buf, char delim, strbuf_t** bufs, size_t* nr_bufs) {
+    return strbuf_split_by_str_len(buf, &delim, 1, bufs, nr_bufs);
+}
+strbuf_t strbuf_split_by_str(strbuf_t buf, char* delim, strbuf_t** bufs, size_t* nr_bufs) {
+    return strbuf_split_by_str_len(buf, delim, strlen(delim), bufs, nr_bufs);
+}
+strbuf_t strbuf_split_by_str_len(strbuf_t buf, char* delim, size_t delim_len, strbuf_t** bufs, size_t* nr_bufs) {
+    char initial; int curr, last; int nr, nr_copied; strbuf_t* bs;
+    if(bufs == NULL || nr_bufs == NULL || delim_len > buf.len) return STRBUF_ERROR;
+    
+    // first round: find the number of delims in buf
+    nr = 0;
+    initial = delim[0]; curr = 0;
+    while(curr < buf.len - delim_len+1) {
+        if(buf.str[curr] == initial && strncmp(&buf.str[curr], delim, delim_len) == 0) {
+            nr++; curr += delim_len;
+        } else {
+            curr++;
+        }
+    }
+    
+    // second round: copy out the strings seperated by delims
+    bs = calloc(nr+1, sizeof(strbuf_t));
+    last = 0; nr_copied = 0;
+    while(curr < buf.len - delim_len+1) {
+        if(buf.str[curr] == initial && strncmp(&buf.str[curr], delim, delim_len) == 0) {
+            if(last == curr) bs[nr_copied] = strbuf_from_str(strid(""));
+            else bs[nr_copied] = strbuf_dup_slice(buf, last, curr-1);
+            nr_copied++; curr += delim_len; last = curr;
+        } else {
+            curr++;
+        }
+    }
+    if(last == buf.len) bs[nr_copied] = strbuf_from_str(strid(""));
+    else bs[nr_copied] = strbuf_dup_slice(buf, last, buf.len-1);
+    nr_copied++;
+    
+    if(nr+1 != nr_copied) return STRBUF_ERROR;
+    nr_bufs[0] = nr;
+    bufs[0] = bs;
+    return buf;
+}
+
+    // NOTE: this function treats buffers with the same content and lengths but different caps as the same
+bool strbuf_equals(strbuf_t a, strbuf_t b) {
+    if(a.len != b.len) return false;
+    else return (strcmp(a.str,b.str) == 0);
+}
+int strbuf_cmp(strbuf_t a, strbuf_t b) {
+    return strcmp(a.str,b.str);
+}
+int strbuf_find_subindex(strbuf_t outer, size_t offset, strid_t inner) {
+    // basically the same code as strid_subindex
+    int i, inner_len = inner[-1], outer_len = outer.len;
+    char initial;
+    if(inner_len > outer_len) return -1;
+                // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
+    else if(inner_len == outer_len) return ((strcmp(outer.str, inner)==0)-1);
+    
+    initial = inner[0];
+    for(i = 0; i < outer_len - inner_len + 1; i++) {
+        if(outer.str[i] == initial && strncmp(&outer.str[i], inner, inner_len) == 0)
+            return i;
+    }
+    return -1;
+}
+int strbuf_find_last_subindex(strbuf_t outer, size_t offset, strid_t inner) {
+    // basically the same code as strid_subindex, but in reverse
+    int i, inner_len = inner[-1], outer_len = outer.len;
+    char final;
+    if(inner_len > outer_len) return -1;
+                // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
+    else if(inner_len == outer_len) return ((strcmp(outer.str, inner)==0)-1);
+    
+    final = inner[inner_len-1];
+    for(i = outer_len-1; i >= inner_len - 1; i--) {
+        if(outer.str[i] == final && strncmp(&outer.str[i-(inner_len-1)], inner, inner_len) == 0)
+            return i;
+    }
+    return -1;
+}
+
+strbuf_t strbuf_concat(strbuf_t buf, const char* str) {
+    return strbuf_concat_len(buf, str, strlen(str));
+}
+strbuf_t strbuf_concat_len(strbuf_t buf, const char* str, size_t len) {
+    return strbuf_replace_range_len(buf, buf.len, buf.len+len, str, len);
+}
+
+
+static strbuf_t strbuf_fmt_uint(size_t bits, format_params_t* params, strbuf_int_format_t format) {
+    strbuf_t fmt = strbuf_alloc(10);
+    fmt = strbuf_concat(fmt, "%");
+    if(format == STRBUF_INT_FORMAT_OCTAL_WITH_PREFIX_NONZERO ||
+        format == STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX_NONZERO ||
+        format == STRBUF_INT_FORMAT_HEXADECIMAL_UPPER_CASE_WITH_PREFIX_NONZERO) {
+        fmt = strbuf_concat(fmt, "#");
+    }
+    if(params != NULL) {
+        switch(params.sign_behavior) {
+        case STRBUF_SIGN_BEHAVIOR_ONLY_NEGATIVE:
+            break;
+        case STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_PLUS:
+            fmt = strbuf_concat(fmt, "+");
+            break;
+        case STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_SPACE  :
+            fmt = strbuf_concat(fmt, " ");
+            break;
+        default:
+            strbuf_free(fmt);
+            return STRBUF_ERROR;
+        }
+        fmt = strbuf_concat(fmt, ".*");
+    }
+    switch(format) {
+    case STRBUF_INT_FORMAT_DECIMAL:
+        if(bits == 8) fmt = strbuf_concat(PRIu8);
+        else if(bits == 16) fmt = strbuf_concat(PRIu16);
+        else if(bits == 32) fmt = strbuf_concat(PRIu32);
+        else if(bits == 64) fmt = strbuf_concat(PRIu63);
+        else {
+            strbuf_free(fmt);
+            return STRBUF_ERROR;
+        }
+        break;
+    case STRBUF_INT_FORMAT_OCTAL:
+    case STRBUF_INT_FORMAT_OCTAL_WITH_PREFIX:
+        if(bits == 8) fmt = strbuf_concat(PRIo8);
+        else if(bits == 16) fmt = strbuf_concat(PRIo16);
+        else if(bits == 32) fmt = strbuf_concat(PRIo32);
+        else if(bits == 64) fmt = strbuf_concat(PRIo63);
+        else {
+            strbuf_free(fmt);
+            return STRBUF_ERROR;
+        }
+        break;
+    case STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE:
+    case STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX:
+        fmt = strbuf_concat(PRIx8);
+        break;
+    case STRBUF_INT_FORMAT_HEXADECIMAL_UPPER_CASE:
+    case STRBUF_INT_FORMAT_HEXADECIMAL_UPPER_CASE_WITH_PREFIX:
+        fmt = strbuf_concat(PRIX8);
+        break;
+    default:
+        strbuf_free(fmt);
+        return STRBUF_ERROR;
+    }
+    
+}
+
+strbuf_t strbuf_concat_int8(strbuf_t buf, int8_t val, format_params_t* params);
+strbuf_t strbuf_concat_int16(strbuf_t buf, int16_t val, format_params_t* params);
+strbuf_t strbuf_concat_int32(strbuf_t buf, int32_t val, format_params_t* params);
+strbuf_t strbuf_concat_int64(strbuf_t buf, int64_t val, format_params_t* params);
+strbuf_t strbuf_concat_uint8(strbuf_t buf, uint8_t val, format_params_t* params, strbuf_int_format_t format) {
+}
+strbuf_t strbuf_concat_uint16(strbuf_t buf, uint16_t val, format_params_t* params, strbuf_int_format_t format);
+strbuf_t strbuf_concat_uint32(strbuf_t buf, uint32_t val, format_params_t* params, strbuf_int_format_t format);
+strbuf_t strbuf_concat_uint64(strbuf_t buf, uint64_t val, format_params_t* params, strbuf_int_format_t format);
+strbuf_t strbuf_concat_float32(strbuf_t buf, float32_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format);
+strbuf_t strbuf_concat_float64(strbuf_t buf, float64_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format);
+strbuf_t strbuf_concat_char(strbuf_t buf, char val);
+strbuf_t strbuf_concat_ptr(strbuf_t buf, void* ptr);
+
+// all of these return the length of what's parsed, typically to be +=-ed to the offset variable
+// width = 0 is the default behavior, and will set it to ignore the width, with a number > 0 it will not consume more than those chars (and in the case of strbuf_read_char _exactly_ that many chars)
+size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expected_const);
+size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t allowed_chars_first, strid_t allowed_chars, strid_t* out_id);
+size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id); // inverse bc it excludes instead
+size_t strbuf_read_decimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out);
+size_t strbuf_read_octal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
+size_t strbuf_read_hexadecimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
+size_t strbuf_read_decimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out);
+size_t strbuf_read_octal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out, bool expect_prefix);
+size_t strbuf_read_hexadecimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out, bool expect_prefix);
+size_t strbuf_read_float_literal(strbuf_t buf, size_t offset, size_t width, float64_t* out, bool allow_exponent);
+size_t strbuf_read_char(strbuf_t buf, size_t offset, size_t width, char* out);
+size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out);
 
 
 
