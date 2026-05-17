@@ -194,12 +194,13 @@ uint64_t entropy_uint64(void) {
 
 
 
-
 strid_t strid(const char* str) {
+    if(str == NULL) return STRID_INVALID;
     return strid_from_len(str, strlen(str));
 }
 strid_t strid_from_len(const char* str, size_t len) {
     uint8_t* buf;
+    if(str == NULL) return STRID_INVALID;
     // max 254 chars so that the max allocation size is 256 bytes == 4 cache lines
     if(len > 254) return STRID_INVALID;
     buf = calloc(len+2, 1);
@@ -209,18 +210,23 @@ strid_t strid_from_len(const char* str, size_t len) {
     return &buf[1];
 }
 strid_t strid_dup(strid_t id) {
+    if(id == STRID_INVALID) return STRID_INVALID;
     return strid_from_len(id, id[-1]);
 }
 bool strid_equals(strid_t a, strid_t b) {
+    if(a == STRID_INVALID || b == STRID_INVALID) return (a == STRID_INVALID && b == STRID_INVALID);
     if(a[-1] != b[-1]) return false;
     else return (strcmp((const char*)a,(const char*)b) == 0);
 }
 int strid_cmp(strid_t a, strid_t b) {
+    if(a == STRID_INVALID) return 1;
+    if(b == STRID_INVALID) return -1;
     return strcmp((const char*)a,(const char*)b);
 }
 int strid_subindex(strid_t outer, strid_t inner) {
     int i, inner_len = inner[-1], outer_len = outer[-1];
     char initial;
+    if(outer == STRID_INVALID || inner == STRID_INVALID) return -1;
     if(inner_len > outer_len) return -1;
                 // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
     else if(inner_len == outer_len) return (strid_equals(outer, inner)-1);
@@ -233,9 +239,11 @@ int strid_subindex(strid_t outer, strid_t inner) {
     return -1;
 }
 void strid_free(strid_t id) {
-    free(&id[-1]);
+    if(id != STRID_INVALID)
+        free(&id[-1]);
 }
 size_t strid_len(strid_t id) {
+    if(id == STRID_INVALID) return (size_t)-1;
     return (size_t)id[-1];
 }
 
@@ -399,7 +407,7 @@ strbuf_t strbuf_concat_len(strbuf_t buf, const char* str, size_t len) {
 
 
 static strbuf_t strbuf_fmt_uint(size_t bits, format_params_t* params, strbuf_int_format_t format) {
-    strbuf_t fmt = strbuf_alloc(10);
+    strbuf_t fmt = strbuf_alloc(10), b;
     fmt = strbuf_concat(fmt, "%");
     if(format == STRBUF_INT_FORMAT_OCTAL_WITH_PREFIX_NONZERO ||
         format == STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX_NONZERO ||

@@ -927,6 +927,10 @@ typedef struct format_params_t {
 #define STRBUF_ALLOCATION_FAILURE (strbuf_t)({NULL,0,0})
 #define STRBUF_ERROR (strbuf_t)({NULL,1,0})
 
+
+
+rewrite all with result type! this one is not as simple as strid.
+
 strbuf_t strbuf_from_str(char* str); // str needs to have been _allocated_ by the standard allocator (like strids), otherwise use strbuf_concat
 strbuf_t strbuf_alloc(size_t initial_cap);
 strbuf_t strbuf_reserve(strbuf_t b, size_t additional_cap);
