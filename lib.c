@@ -257,6 +257,7 @@ size_t mem_find(mem_t block, size_t block_size, mem_t search_data, size_t search
         curr = ((uintptr_t) new_pos) - ((uintptr_t) block);
         if(memcmp(&(((uint8_t*)block)[curr]), search_data, search_data_size) == 0)
             return curr;
+        curr++;
     }
     return -1;
 }
