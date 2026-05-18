@@ -781,7 +781,7 @@ for(int i = 0; i < 10; i++) {
         break;
     case T_FLOAT:
         tk = "float";
-        params_end =  ", strbuf_float_format_t format";
+        params_end =  ", char decimal_point, strbuf_float_format_t format";
         fmststr_params_end = ", format";
         break;
     }
@@ -825,6 +825,15 @@ strbuf_result_t strbuf_concat_@tk@@ts@(strbuf_t* buf, @tk@@ts@_t val, format_par
     }
     if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
     buf[0].len += test_len;
+    
+<?c if(type_kind[i] == T_FLOAT) { ?>
+    if(decimal_point != '.') {
+        for(int i = buf[0].len-len_format; i < len_format; i++) {
+            if(buf[0].str[i] == '.')
+                buf[0].str[i] = decimal_point;
+        }
+    }
+<?c } ?>
     
     if(params != NULL && do_padding && params[0].pad_type == STRBUF_PAD_TYPE_RIGHT) {
         for(int i = 0; i < len_padding; i++) {
