@@ -713,120 +713,7 @@ void mem_search(mem_t block, mem_t search_data);
 uint16_t mem_area_code_get(void);
 void mem_area_code_set(uint16_t code);
 
-
-/* string library */
-
-/* str_t stores capacity and str_len in header block */
-typedef char* str_t;
-typedef const char* str_view_t;
-
-str_t str_new(char* text);
-void str_free(str_t s);
-size_t str_len(str_t s);
-str_t str_copy(str_t src, str_t dst);
-str_t str_concat(str_t s, char* text);
-str_t str_concat_int(str_t s, int64_t i);
-str_t str_concat_float(str_t s, double d);
-
-/* TODO inttypes.h format specifiers into conversion functions, as well as
-    [str|wcs]to[i|u]max*/
-
-
-/* actually, it might be easier to have the following types: */
-typedef struct mem_t {
-    void* ptr;
-    size_t cap;
-} mem_t;
-typedef struct str_t {
-    char* ptr;
-    size_t len, cap;
-} str_t;
-typedef struct str_view_t {
-    const char* ptr;
-    size_t cap;
-} str_view_t;
-/* This means we have the size and the data not local, but we also don't need to access the data area at all and could simply use registers for that, which probably is faster anyway, also substring gets easier... */
-
-
-
-
-better idea:
-
-
-typedef enum buf_result_t {
-    BUF_OK = 0,
-    
-} buf_result_t;
-
-typedef struct {
-    uint8_t* byte_ptr;
-    size_t len, cap;
-} *buf_t, const *cbuf_t;
-typedef struct slice_t {
-    uint8_t* byte_ptr;
-    size_t len;
-} *slice_t, const *cslice_t;
-typedef struct view_t {
-    const uint8_t* byte_ptr;
-    size_t len;
-} *view_t, const *cview_t;
-
-
-buf_result_t buf_alloc(buf_t b, size_t size, size_t align, size_t offset);
-buf_result_t buf_reserve(buf_t b, size_t new_cap)
-    { return buf_resize(b, b.cap+new_cap); }
-buf_result_t buf_resize(buf_t b, size_t new_cap);
-buf_result_t buf_copy(buf_t dst, view_t src, size_t dst_offset);
-buf_result_t buf_concat(buf_t dst, view_t src)
-    { return buf_copy(dst, src, dst.len); }
-
-void buf_free(buf_t b);
-
-slice_t slice_sub(slice_t s, size_t begin, size_t end);
-void slice_zero(slice_t s);
-
-view_t view_str(const char* str);
-view_t view_sub(view_t v, size_t begin, size_t end);
-bool view_equals(view_t a, view_t b);
-view_t view_find(view_t v1, view_t v2); // returns NULL if not there
-view_t view_find_last(view_t v1, view_t v2);
-
-buf_result_t view_split_by_byte(view_t v, uint8_t delim, buf_t* bufs, size_t nr_bufs);
-buf_result_t view_split_by_view(view_t v, view_t delim, buf_t* bufs, size_t nr_bufs);
-
-// util functions that are basically just casts
-void buf_zero(buf_t b) { slice_zero((slice_t)b); }
-slice_t buf_slice(buf_t b) { return (slice_t) b; }
-view_t buf_view(buf_t b) { return (view_t) b; }
-slice_t buf_subslice(buf_t b, size_t begin, size_t end)
-view_t buf_subview(buf_t b, size_t begin, size_t end)
-    { return view_sub((view_t) b, begin, end); }
-bool buf_equals(buf_t a, buf_t b)
-    { return view_equals((view_t) a, (view_t)b); }
-view_t buf_find(buf_t b, view_t v)
-    { return view_find((view_t) b, (view_t)v); }
-view_t buf_find_last(buf_t b, view_t v)
-    { return view_find_last((view_t) b, (view_t)v); }
-
-view_t slice_subview(slice_t s, size_t begin, size_t end)
-    { return view_sub((view_t) s, begin, end); }
-view_t slice_view(slice_t s) { return (view_t) s; }
-bool slice_equals(slice_t a, slice_t b)
-    { return view_equals((view_t) a, (view_t)b); }
-view_t slice_find(slice_t s, view_t v)
-    { return view_find(view_t) s, (view_t)v); }
-view_t slice_find_last(slice_t s, view_t v)
-    { return view_find_last(view_t) s, (view_t)v); }
-
-
-
-
-
-
-
 // much, much simpler interface for just raw pointers:
-
-
 
 void* mem_alloc(size_t cap, size_t align, size_t offset);
 void* mem_resize(void* ptr, size_t old_cap, size_t new_cap);
@@ -855,7 +742,7 @@ void* mem_find_last(const void* area, size_t cap, const void* search, size_t sea
 
 
 
-// different idea: two kinds of strings
+// two kinds of strings
 // a: string identifiers, only there to be copied and compared:
 // these have the length at index -1 and are capped to 254 chars
 typedef const char* strid_t;
@@ -866,17 +753,15 @@ strid_t strid_dup(strid_t id);
 bool strid_equals(strid_t a, strid_t b);
 int strid_cmp(strid_t a, strid_t b);
 int strid_subindex(strid_t outer, strid_t inner);
+int strid_subindex_str(strid_t outer, char* inner);
+int strid_subindex_str_len(strid_t outer, char* inner, size_t inner_len);
+int strid_subindex_char(strid_t id, char c);
 void strid_free(strid_t id);
 size_t strid_len(strid_t id);
 
 
 
 // b: string format buffers, for concatting / formatting into and parsing out of:
-
-
-
-
-
 typedef enum strbuf_result_t {
     STRBUF_OK = 0,
     STRBUF_ERROR_FAILED_ALLOCATION = -1,
@@ -887,8 +772,8 @@ typedef enum strbuf_result_t {
     STRBUF_RESULT_MAX_ENUM = 0x7f
 } strbuf_result_t;
 typedef enum strbuf_pad_type_t {
-    STRBUF_PAD_TYPE_RIGHT = 0,
-    STRBUF_PAD_TYPE_LEFT = 1,
+    STRBUF_PAD_TYPE_LEFT = 0,
+    STRBUF_PAD_TYPE_RIGHT = 1,
     STRBUF_PAD_TYPE_MAX_ENUM = 0x7f
 } strbuf_pad_type_t;
 typedef enum strbuf_sign_behavior_t {
@@ -921,7 +806,6 @@ typedef enum strbuf_float_format_t {
     STRBUF_FLOAT_FORMAT_MAX_ENUM = 0x7f
 } strbuf_float_format_t;
 
-
 typedef struct strbuf_t {
     char* str;
     size_t len, cap;
@@ -932,10 +816,6 @@ typedef struct format_params_t {
     char pad_char;
     strbuf_sign_behavior_t sign_behavior;
 } format_params_t;
-
-
-
-
 
 strbuf_result_t strbuf_from_str(strbuf_t* b, char* str); // str needs to have been _allocated_ by the standard allocator (like strids), otherwise use strbuf_concat
 strbuf_result_t strbuf_alloc(strbuf_t* b, size_t initial_cap);
@@ -977,24 +857,23 @@ strbuf_result_t strbuf_concat_ptr(strbuf_t* buf, void* ptr);
 // width = 0 is the default behavior, and will set it to ignore the width, with a number > 0 it will not consume more than those chars
 //  (and in the case of strbuf_read_char _exactly_ that many chars)
 // None of these functions change buf, they return 0 if nothing was to parse / if offset was out of range, and will then not write anything to the out pointers.
+// 0x or 0X may be before hex numbers, as can leading 0s for all types, but no suffixes like L or f following will be counted
 size_t strbuf_read_whitespace(strbuf_t buf, size_t offset, size_t width);
 size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expected_const);
 size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t allowed_chars_first, strid_t allowed_chars, strid_t* out_id);
     // inverse bc it excludes instead
 size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id); 
 size_t strbuf_read_decimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out);
-size_t strbuf_read_octal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
-size_t strbuf_read_hexadecimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
 size_t strbuf_read_decimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out);
-size_t strbuf_read_octal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out, bool expect_prefix);
-size_t strbuf_read_hexadecimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out, bool expect_prefix);
-size_t strbuf_read_float_literal(strbuf_t buf, size_t offset, size_t width, float64_t* out, bool allow_exponent);
+size_t strbuf_read_octal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out);
+size_t strbuf_read_hexadecimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out);
+size_t strbuf_read_float_literal(strbuf_t buf, size_t offset, size_t width, float64_t* out);
 size_t strbuf_read_char(strbuf_t buf, size_t offset, size_t width, char* out);
 size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out);
 
 
 
-
+/* Add a unicode lib for strings like these? */
 
 
 

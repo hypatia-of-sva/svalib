@@ -224,16 +224,34 @@ int strid_cmp(strid_t a, strid_t b) {
     return strcmp((const char*)a,(const char*)b);
 }
 int strid_subindex(strid_t outer, strid_t inner) {
-    int i, inner_len = inner[-1], outer_len = outer[-1];
-    char initial;
     if(outer == STRID_INVALID || inner == STRID_INVALID) return -1;
-    if(inner_len > outer_len) return -1;
+    return strid_subindex_str_len(outer, inner, inner[-1]);
+}
+int strid_subindex_str(strid_t outer, char* inner) {
+    if(outer == STRID_INVALID || inner == NULL) return -1;
+    return strid_subindex_str_len(outer, inner, strlen(inner));
+}
+int strid_subindex_str_len(strid_t outer, char* inner, size_t inner_len) {
+    int i, outer_len;
+    char initial;
+    if(outer == STRID_INVALID || inner == NULL || inner_len > outer_len) return -1;
+    outer_len = outer[-1];
                 // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
-    else if(inner_len == outer_len) return (strid_equals(outer, inner)-1);
+    else if(inner_len == outer_len) return ((strcmp(outer, inner)==0)-1);
     
     initial = inner[0];
     for(i = 0; i < outer_len - inner_len + 1; i++) {
         if(outer[i] == initial && strncmp(&outer[i], inner, inner_len) == 0)
+            return i;
+    }
+    return -1;
+}
+int strid_subindex_char(strid_t id, char c) {
+    int i, len = id[-1];
+    if(id == STRID_INVALID || len == 0) return -1;
+    
+    for(i = 0; i < len; i++) {
+        if(id[i] == c)
             return i;
     }
     return -1;
@@ -662,21 +680,52 @@ for(int i = 0; i < 10; i++) {
         break;
     }
 ?>
-strbuf_result_t strbuf_concat_uint8(strbuf_t* buf, @tk@@ts@_t val, format_params_t* params @fmststr_params_end@) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+strbuf_result_t strbuf_concat_@tk@@ts@(strbuf_t* buf, @tk@@ts@_t val, format_params_t* params @fmststr_params_end@) {
+    strbuf_t fmt; size_t len_format, len_padding, len_alloc, test_len; bool do_padding = false; strbuf_result_t r;
     if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
     
     r = strbuf_fmtstr_@tk@(&fmt, @ts@, params @fmststr_params_end@);
     if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
     
+    if(params != NULL) {
+        len_format = snprintf(NULL, 0, fmt.str, params[0].precision, val);
+        if(len_format < params[0].min_length) {
+            len_alloc = params[0].min_length;
+            len_padding = params[0].min_length - len_format;
+            do_padding = true;
+        } else {
+            len_alloc = len_format;
+        }
+    } else {
+        len_format = snprintf(NULL, 0, fmt.str, val);
+        len_alloc = len_format;
+    }
+    
     // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
+    r = strbuf_reserve(buf, len_alloc+1);
     if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
     
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(params != NULL && do_padding && params[0].pad_type == STRBUF_PAD_TYPE_LEFT) {
+        for(int i = 0; i < len_padding; i++) {
+            buf[0].str[buf[0].len] = params[0].pad_char;
+            buf[0].len++;
+        }
+    }
+    
+    if(params != NULL) {
+        test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, params.precision, val);
+    } else {
+        test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    }
     if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
     buf[0].len += test_len;
+    
+    if(params != NULL && do_padding && params[0].pad_type == STRBUF_PAD_TYPE_RIGHT) {
+        for(int i = 0; i < len_padding; i++) {
+            buf[0].str[buf[0].len] = params[0].pad_char;
+            buf[0].len++;
+        }
+    }
     
     (void) strbuf_free(&fmt);
     
@@ -686,214 +735,6 @@ strbuf_result_t strbuf_concat_uint8(strbuf_t* buf, @tk@@ts@_t val, format_params
 }
 ?>
 
-
-
-
-static strbuf_result_t strbuf_concat_generic(strbuf_t* buf, strbuf_t fmt, format_params_t* params, ...) {
-    
-}
-
-
-strbuf_result_t strbuf_concat_int8(strbuf_t* buf, int8_t val, format_params_t* params) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_int(&fmt, 8, params);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_int16(strbuf_t* buf, int16_t val, format_params_t* params) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_int(&fmt, 16, params);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_int32(strbuf_t* buf, int32_t val, format_params_t* params) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_int(&fmt, 32, params);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_int64(strbuf_t* buf, int64_t val, format_params_t* params) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_int(&fmt, 64, params);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_uint8(strbuf_t* buf, uint8_t val, format_params_t* params, strbuf_uint_format_t format) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_uint(&fmt, 8, params, format);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_uint16(strbuf_t* buf, uint16_t val, format_params_t* params, strbuf_uint_format_t format) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_uint(&fmt, 16, params, format);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_uint32(strbuf_t* buf, uint32_t val, format_params_t* params, strbuf_uint_format_t format) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_uint(&fmt, 32, params, format);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_uint64(strbuf_t* buf, uint64_t val, format_params_t* params, strbuf_uint_format_t format) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_uint(&fmt, 64, params, format);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_float32(strbuf_t* buf, float32_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_float(&fmt, 32, params, format);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
-strbuf_result_t strbuf_concat_float64(strbuf_t* buf, float64_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format) {
-    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
-    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
-    
-    r = strbuf_fmtstr_float(&fmt, 64, params, format);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    // we reserve 1 byte more to allow for the NUL byte
-    len_format = snprintf(NULL, 0, fmt.str, val);
-    r = strbuf_reserve(buf, len_format+1);
-    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
-    
-    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
-    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
-    buf[0].len += test_len;
-    
-    (void) strbuf_free(&fmt);
-    
-    return STRBUF_OK;
-}
 strbuf_result_t strbuf_concat_char(strbuf_t* buf, char val) {
     return strbuf_concat_len(buf, &val, 1);
 }
@@ -917,21 +758,99 @@ strbuf_result_t strbuf_concat_ptr(strbuf_t* buf, void* ptr) {
 // width = 0 is the default behavior, and will set it to ignore the width, with a number > 0 it will not consume more than those chars
 //  (and in the case of strbuf_read_char _exactly_ that many chars)
 // None of these functions change buf, they return 0 if nothing was to parse / if offset was out of range, and will then not write anything to the out pointers.
-size_t strbuf_read_whitespace(strbuf_t buf, size_t offset, size_t width);
-size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expected_const);
-size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t allowed_chars_first, strid_t allowed_chars, strid_t* out_id);
+size_t strbuf_read_whitespace(strbuf_t buf, size_t offset, size_t width) {
+    int len = 0;
+    if(buf.str == NULL || offset >= buf.cap) return 0;
+    while((len < width || width == 0) && offset+len < buf.cap && isspace(buf.str[offset+len])) {
+        len++;
+    }
+    return len;
+}
+size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expected_const) {
+    size_t len = strid_len(expected_const);
+    if(buf.str == NULL || offset + len >= buf.cap) return 0;
+    for(int i = 0; i < len; i++) {
+        if(buf.str[offset+i] != expected_const[i])
+            return 0;
+    }
+    return len;
+}
+size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t allowed_chars_first, strid_t allowed_chars, strid_t* out_id) {
+    int len = 0;
+    if(buf.str == NULL || offset >= buf.cap) return 0;
+    for(int i = offset; i < buf.cap; i++) {
+        if(strid_subindex_char(allowed_chars_first, buf.str[i]) >= 0) {
+            len = 1;
+            for(int j = 0; i+j<buf.cap && j < width; j++) {
+                if(strid_subindex_char(allowed_chars, buf.str[i]) < 0) {
+                    return len;
+                }
+                len++;
+            }
+            return len;
+        }
+    }
+    return 0;
+}
     // inverse bc it excludes instead
-size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id);
-size_t strbuf_read_decimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out);
-size_t strbuf_read_octal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
-size_t strbuf_read_hexadecimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
-size_t strbuf_read_decimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out);
-size_t strbuf_read_octal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out, bool expect_prefix);
-size_t strbuf_read_hexadecimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out, bool expect_prefix);
-size_t strbuf_read_float_literal(strbuf_t buf, size_t offset, size_t width, float64_t* out, bool allow_exponent);
-size_t strbuf_read_char(strbuf_t buf, size_t offset, size_t width, char* out);
-size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out);
+size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id) {
+    int len = 0;
+    if(buf.str == NULL || offset >= buf.cap) return 0;
+    for(int i = offset; i < buf.cap; i++) {
+        if(strid_subindex_char(not_allowed_chars_first, buf.str[i]) < 0) {
+            len = 1;
+            for(int j = 0; i+j<buf.cap && j < width; j++) {
+                if(strid_subindex_char(not_allowed_chars, buf.str[i]) >= 0) {
+                    return len;
+                }
+                len++;
+            }
+            return len;
+        }
+    }
+    return 0;
+}
 
+static size_t strbuf_read_generic_nr_literal(strbuf_t buf, size_t offset, size_t width, void* out, char* modifier) {
+    int len, nr; strbuf_t fmt; strbuf_result_t r;
+    if(buf.str == NULL || offset >= buf.cap || out == NULL) return 0;
+    r = strbuf_alloc(&fmt, 20);
+    if(r != STRBUF_OK) return 0;
+    r = strbuf_concat(&fmt, "%");
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    if(width != 0) {
+        r = strbuf_concat_int32(&fmt, width), NULL;
+        if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    }
+    r = strbuf_concat(&fmt, modifier);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    nr = sscanf(&buf.str[offset], fmt, &out, &len);
+    
+    if(nr != 1) return 0;
+    else return len;
+}
+size_t strbuf_read_decimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out) {
+    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNi64);
+}
+size_t strbuf_read_decimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out) {
+    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNu64);
+}
+size_t strbuf_read_octal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out) {
+    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNo64);
+}
+size_t strbuf_read_hexadecimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out) {
+    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNx64);
+}
+size_t strbuf_read_float_literal(strbuf_t buf, size_t offset, size_t width, float64_t* out) {
+    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNf64);
+}
+size_t strbuf_read_char(strbuf_t buf, size_t offset, size_t width, char* out) {
+    return strbuf_read_generic_nr_literal(buf, oddset, width, out, "c");
+}
+size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out) {
+    return strbuf_read_generic_nr_literal(buf, oddset, width, out, "p");
+}
 
 
 
@@ -1081,14 +1000,6 @@ void mem_search(mem_t block, mem_t search_data);
 
 
 
-/* string library */
-
-str_t str_new(char* text);
-void str_free(str_t s);
-size_t str_len(str_t s);
-str_t str_concat(str_t s, char* text);
-str_t str_concat_int(str_t s, int64_t i);
-str_t str_concat_float(str_t s, double d);
 
 
 
