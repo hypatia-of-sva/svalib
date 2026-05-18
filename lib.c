@@ -251,7 +251,7 @@ size_t mem_find(mem_t block, size_t block_size, mem_t search_data, size_t search
     
     initial = ((uint8_t*)search_data)[0];
     curr = 0;
-    while(block_size >= search_data_size) {
+    while(curr < block_size - search_data_size + 1) {
         new_pos = memchr(&((uint8_t*)block)[curr], initial, block_size);
         if(new_pos == NULL) return -1;
         curr = ((uintptr_t) new_pos) - ((uintptr_t) block);
