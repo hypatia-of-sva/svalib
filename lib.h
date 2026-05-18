@@ -714,24 +714,9 @@ size_t mem_find_last(mem_t block, size_t block_size, mem_t search_data, size_t s
 bool mem_equals(mem_t a, size_t a_size, mem_t b, size_t b_size);
 int mem_cmp(mem_t a, size_t a_size, mem_t b, size_t b_size);
 
-uint16_t mem_area_code_get(void);
-void mem_area_code_set(uint16_t code);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// interesting idea; where to put?
+//uint16_t mem_area_code_get(void);
+//void mem_area_code_set(uint16_t code);
 
 
 

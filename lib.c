@@ -243,21 +243,25 @@ void mem_zero(mem_t block, size_t len) {
 }
  // returns offset into block or (size_t)-1
 size_t mem_find(mem_t block, size_t block_size, mem_t search_data, size_t search_data_size) {
-    // basically the same code as strid_subindex or strbuf_find_subindex
-    int i; uint8_t initial;
-    if(block == NULL || search_data == NULL || search_data_size > block_size) return (size_t)-1;
+    // basically the same code as strid_subindex or strbuf_find_subindex, but we can use memchr for the initial-search
+    int curr; uint8_t initial;
+    if(block == NULL || search_data == NULL || block_size == 0 || search_data_size == 0 || search_data_size > block_size) return (size_t)-1;
                 // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
     else if(block_size == search_data_size) return (size_t)((memcmp(block, search_data, block_size)==0)-1);
     
     initial = ((uint8_t*)search_data)[0];
-    for(i = 0; i < block_size - search_data_size + 1; i++) {
-        if(((uint8_t*)block)[i] == initial && memcmp(&(((uint8_t*)block)[i]), search_data, search_data_size) == 0)
-            return i;
+    curr = 0;
+    while(block_size >= search_data_size) {
+        new_pos = memchr(&((uint8_t*)block)[curr], initial, block_size);
+        if(new_pos == NULL) return -1;
+        curr = ((uintptr_t) new_pos) - ((uintptr_t) block);
+        if(memcmp(&(((uint8_t*)block)[curr]), search_data, search_data_size) == 0)
+            return curr;
     }
     return -1;
 }
 size_t mem_find_last(mem_t block, size_t block_size, mem_t search_data, size_t search_data_size) {
-    // basically the same code as strbuf_find_last_subindex
+    // basically the same code as strbuf_find_last_subindex; no memrchr for us to use here!
     int i; uint8_t final;
     if(block == NULL || search_data == NULL || search_data_size > block_size) return (size_t)-1;
                 // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
