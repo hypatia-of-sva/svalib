@@ -189,10 +189,105 @@ uint64_t entropy_uint64(void) {
 
 
 
+/* memory library */
+
+mem_t mem_alloc(size_t size) {
+    if(size == 0) return (mem_t)NULL;
+    return (mem_t) malloc(size);
+}
+mem_t mem_alloc_from_str(const char* str) {
+    if(str == NULL) return (mem_t)NULL;
+    return mem_alloc_from_str_len(str, strlen(str));
+}
+mem_t mem_alloc_from_str_len(const char* str, size_t len) {
+    mem_t m = mem_alloc(len+1);
+    if(m == NULL) return m;
+    mem_copy(m, len+1, str, len, len);
+    return m;
+}
+mem_t mem_alloc_align(size_t size, size_t align) {
+    if(!is_power_of_2(align)) return (mem_t)NULL;
+#ifdef WIN32
+// we can also use _aligned_offset_malloc here - but there is no equivalent of that on unix side without writing a new allocator.
+    return (mem_t) _aligned_alloc(size, align);
+#else
+    void* ptr;
+    int code = posix_memalign(&ptr, align, size);
+    if(code != 0) return (mem_t)NULL;
+    else return (mem_t)ptr;
+#endif
+}
+void mem_resize(mem_t* block, size_t old_size, size_t new_size) {
+    if(block == NULL) return;
+    if(old_size == 0) {
+        block[0] = mem_alloc(new_size);
+        return;
+    }
+    if(new_size == 0) {
+        mem_free(block);
+        return;
+    }
+    block[0] = realloc(block[0], new_size);
+}
+void mem_free(mem_t* block, size_t size) {
+    if(block == NULL || size == 0) return;
+    free(block[0]);
+}
+void mem_copy(mem_t dst, size_t dst_size, mem_t src, size_t src_size, size_t len) {
+    if(dst == NULL || dst_size < len || src == NULL || src_size < len) return;
+    memmove(dst, src, len);
+}
+void mem_zero(mem_t block, size_t len) {
+    if(block == NULL || size == 0) return;
+    memset(block, 0, len);
+}
+ // returns offset into block or (size_t)-1
+size_t mem_find(mem_t block, size_t block_size, mem_t search_data, size_t search_data_size) {
+    // basically the same code as strid_subindex or strbuf_find_subindex
+    int i; uint8_t initial;
+    if(block == NULL || search_data == NULL || search_data_size > block_size) return (size_t)-1;
+                // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
+    else if(block_size == search_data_size) return (size_t)((memcmp(block, search_data, block_size)==0)-1);
+    
+    initial = ((uint8_t*)search_data)[0];
+    for(i = 0; i < block_size - search_data_size + 1; i++) {
+        if(((uint8_t*)block)[i] == initial && memcmp(&(((uint8_t*)block)[i]), search_data, search_data_size) == 0)
+            return i;
+    }
+    return -1;
+}
+size_t mem_find_last(mem_t block, size_t block_size, mem_t search_data, size_t search_data_size) {
+    // basically the same code as strbuf_find_last_subindex
+    int i; uint8_t final;
+    if(block == NULL || search_data == NULL || search_data_size > block_size) return (size_t)-1;
+                // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
+    else if(block_size == search_data_size) return (size_t)((memcmp(block, search_data, block_size)==0)-1);
+    
+    final = ((uint8_t*)search_data)[search_data_size-1];
+    for(i = block_size-1; i >= search_data_size - 1; i--) {
+        if(((uint8_t*)block)[i] == final && memcmp(&(((uint8_t*)block)[i-(search_data_size-1)]), search_data, search_data_size) == 0)
+            return i;
+    }
+    return -1;
+}
+bool mem_equals(mem_t a, size_t a_size, mem_t b, size_t b_size) {
+    if(a == NULL || b == NULL) return (a == NULL && b == NULL);
+    if(s_size != b_size) return false;
+    return (memcmp(a, b, a_size) == 0);
+}
+int mem_cmp(mem_t a, size_t a_size, mem_t b, size_t b_size) {
+    if(a == NULL) return 1;
+    if(b == NULL) return -1;
+    return memcmp(a, b, size_min(a_size, b_size));
+}
 
 
 
 
+
+
+
+/* String library */
 
 strid_t strid(const char* str) {
     if(str == NULL) return STRID_INVALID;
@@ -264,6 +359,8 @@ size_t strid_len(strid_t id) {
     if(id == STRID_INVALID) return (size_t)-1;
     return (size_t)id[-1];
 }
+
+
 
 
 
@@ -418,9 +515,11 @@ int strbuf_cmp(strbuf_t a, strbuf_t b) {
 }
 int strbuf_find_subindex(strbuf_t outer, size_t offset, strid_t inner) {
     // basically the same code as strid_subindex
-    int i, inner_len = inner[-1], outer_len = outer.len;
+    int i, inner_len, outer_len = outer.len;
     char initial;
-    if(buf.str == NULL || inner_len > outer_len) return -1;
+    if(inner == STRID_INVALID) return -1;
+    inner_len = inner[-1];
+    if(outer.str == NULL || inner_len > outer_len) return -1;
                 // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
     else if(inner_len == outer_len) return ((strcmp(outer.str, inner)==0)-1);
     
@@ -433,9 +532,11 @@ int strbuf_find_subindex(strbuf_t outer, size_t offset, strid_t inner) {
 }
 int strbuf_find_last_subindex(strbuf_t outer, size_t offset, strid_t inner) {
     // basically the same code as strid_subindex, but in reverse
-    int i, inner_len = inner[-1], outer_len = outer.len;
+    int i, inner_len, outer_len = outer.len;
     char final;
-    if(buf.str == NULL || inner_len > outer_len) return -1;
+    if(inner == STRID_INVALID) return -1;
+    inner_len = inner[-1];
+    if(outer.str == NULL || inner_len > outer_len) return -1;
                 // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
     else if(inner_len == outer_len) return ((strcmp(outer.str, inner)==0)-1);
     
@@ -767,6 +868,7 @@ size_t strbuf_read_whitespace(strbuf_t buf, size_t offset, size_t width) {
     return len;
 }
 size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expected_const) {
+    if(expected_const == STRID_INVALID) return 0;
     size_t len = strid_len(expected_const);
     if(buf.str == NULL || offset + len >= buf.cap) return 0;
     for(int i = 0; i < len; i++) {
@@ -777,16 +879,18 @@ size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expe
 }
 size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t allowed_chars_first, strid_t allowed_chars, strid_t* out_id) {
     int len = 0;
-    if(buf.str == NULL || offset >= buf.cap) return 0;
+    if(buf.str == NULL || offset >= buf.cap || allowed_chars_first == STRID_INVALID || allowed_chars == STRID_INVALID || out_id == NULL) return 0;
     for(int i = offset; i < buf.cap; i++) {
         if(strid_subindex_char(allowed_chars_first, buf.str[i]) >= 0) {
             len = 1;
             for(int j = 0; i+j<buf.cap && j < width; j++) {
                 if(strid_subindex_char(allowed_chars, buf.str[i]) < 0) {
+                    out_id[0] = strid_from_len(&buf.str[i-len+1], len);
                     return len;
                 }
                 len++;
             }
+            out_id[0] = strid_from_len(&buf.str[i-len+1], len);
             return len;
         }
     }
@@ -795,16 +899,18 @@ size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t
     // inverse bc it excludes instead
 size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id) {
     int len = 0;
-    if(buf.str == NULL || offset >= buf.cap) return 0;
+    if(buf.str == NULL || offset >= buf.cap || not_allowed_chars_first == STRID_INVALID || not_allowed_chars == STRID_INVALID) return 0;
     for(int i = offset; i < buf.cap; i++) {
         if(strid_subindex_char(not_allowed_chars_first, buf.str[i]) < 0) {
             len = 1;
             for(int j = 0; i+j<buf.cap && j < width; j++) {
                 if(strid_subindex_char(not_allowed_chars, buf.str[i]) >= 0) {
+                    out_id[0] = strid_from_len(&buf.str[i-len+1], len);
                     return len;
                 }
                 len++;
             }
+            out_id[0] = strid_from_len(&buf.str[i-len+1], len);
             return len;
         }
     }
@@ -856,147 +962,6 @@ size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-/* memory library */
-
-
-static int mem_header_size(size_t asked_alloc_size) {
-    /* since we store the type in the lowest 2 bits of the size, we assume them
-       to be 0 in the actual allocation, i.e. the allocation has to be a multiple of 4bytes.
-       This leaves the maximum size to be stored in n bits as 2^n-4. From that, we have
-       to subtract the header size, to see if the asked for allocation can fit in the rest
-       of the actual underlying allocation.
-       (This also means the stored allocation size is always bigger, by the size of the header,
-       than the usable size of the buffer.)
-    */
-    if(asked_alloc_size < (1<<8)-4-1) {
-        return 1;
-    } else if(asked_alloc_size < (1<<16)-4-2) {
-        return 2;
-    } else if(asked_alloc_size < (1<<32)-4-4) {
-        return 4;
-    } else if(asked_alloc_size < (1<<64)-4-8) {
-        return 8;
-    }
-    return -1;
-}
-static size_t mem_actual_alloc_size(size_t needed_size) {
-    switch(needed_size%4) {
-    case 0:
-        return needed_size;
-    case 1:
-        return needed_size+3;
-    case 2:
-        return needed_size+2;
-    case 3:
-        return needed_size+1;
-    default:
-        return -1;
-    }
-}
-static void mem_cap_set(int header_size, uint64_t value, void* ptr_to_actual_alloc) {
-    /* we have to store the size in big endian to be able to read
-     * the type bits from the last byte stored; we do this manually */
-    uint8_t* write_ptr = (uint8_t*) ptr_to_actual_alloc;
-    switch(header_size) {
-    case 1:
-        write_ptr[0] = value&0xFF | 0;
-        break;
-    case 2:
-        write_ptr[0] = value&0xFF00;
-        write_ptr[1] = value&0x00FF | 1;
-        break;
-    case 4:
-        write_ptr[0] = value&0xFF000000;
-        write_ptr[1] = value&0x00FF0000;
-        write_ptr[2] = value&0x0000FF00;
-        write_ptr[3] = value&0x000000FF | 2;
-        break;
-    case 8:
-        write_ptr[0] = value&0xFF00000000000000;
-        write_ptr[1] = value&0x00FF000000000000;
-        write_ptr[2] = value&0x0000FF0000000000;
-        write_ptr[3] = value&0x000000FF00000000;
-        write_ptr[4] = value&0x00000000FF000000;
-        write_ptr[5] = value&0x0000000000FF0000;
-        write_ptr[6] = value&0x000000000000FF00;
-        write_ptr[7] = value&0x00000000000000FF | 3;
-        break;
-    default:
-        return -1;
-    }
-}
-/* now we read the type from the last bits and reconstruct the number backwards: */
-static int mem_header_size_get(mem_t block) {
-    uint8_t* read_ptr = (uint8_t*) block;
-    return 1 << (read_ptr[-1] & 3);
-}
-static uint64_t mem_cap_get(mem_t block) {
-    uint8_t* read_ptr = (uint8_t*) block;
-    uint64_t value = 0;
-    switch(mem_header_size_get(block)) {
-    case 1:
-        value |= read_ptr[-1]&0xFC;
-        break;
-    case 2:
-        value |= read_ptr[-1]&0xFC;
-        value |= (read_ptr[-2]&0xFF << 8);
-        break;
-    case 4:
-        value |= read_ptr[-1]&0xFC;
-        value |= (read_ptr[-2]&0xFF << 8);
-        value |= (read_ptr[-3]&0xFF << 16);
-        value |= (read_ptr[-4]&0xFF << 24);
-        break;
-    case 8:
-        value |= read_ptr[-1]&0xFC;
-        value |= (read_ptr[-2]&0xFF << 8);
-        value |= (read_ptr[-3]&0xFF << 16);
-        value |= (read_ptr[-4]&0xFF << 24);
-        value |= (read_ptr[-5]&0xFF << 32);
-        value |= (read_ptr[-6]&0xFF << 40);
-        value |= (read_ptr[-7]&0xFF << 48);
-        value |= (read_ptr[-8]&0xFF << 56);
-        break;
-    default:
-        return -1;
-    }
-    return value;
-}
-
-#define MEM_UNDERLYING_ALLOC malloc
-#define MEM_UNDERLYING_RESIZE realloc
-#define MEM_UNDERLYING_FREE free
-
-mem_t mem_alloc(size_t asked_alloc_size) {
-    int header_size = mem_header_size(asked_alloc_size);
-    if(header_size < 0) return NULL;
-    size_t underlying_size = mem_actual_alloc_size(asked_alloc_size + header_size);
-    void* underlying_alloc = MEM_UNDERLYING_ALLOC(underlying_size);
-    mem_cap_set(header_size, underlying_size, underlying_alloc);
-    return (mem_t) ((uintptr_t) (underlying_alloc) + header_size);
-}
-void mem_resize(mem_t* block, size_t new_asked_alloc_size) {
-    int old_header_size = mem_header_size_get(block);
-    int new_header_size = mem_header_size(new_asked_alloc_size);
-}
-void mem_free(mem_t block);
-size_t mem_capacity(mem_t block) {
-    return (size_t) (mem_cap_get(block));
-}
-void mem_copy(mem_t src, mem_t dst);
-void mem_zero(mem_t block);
-void mem_search(mem_t block, mem_t search_data);
 
 
 

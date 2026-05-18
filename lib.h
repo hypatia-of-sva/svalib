@@ -699,32 +699,25 @@ uint64_t entropy_uint64(void);
 
 /* memory library */
 
-/* mem_t stores capacity in header block */
 typedef void* mem_t;
 
 mem_t mem_alloc(size_t size);
-void mem_resize(mem_t* block, size_t new_size);
-void mem_free(mem_t block);
-size_t mem_capacity(mem_t block);
-void mem_copy(mem_t src, mem_t dst);
-void mem_zero(mem_t block); 
-void mem_search(mem_t block, mem_t search_data);
+mem_t mem_alloc_from_str(const char* str);
+mem_t mem_alloc_from_str_len(const char* str, size_t len);
+mem_t mem_alloc_align(size_t size, size_t align);
+void mem_resize(mem_t* block, size_t old_size, size_t new_size);
+void mem_free(mem_t* block, size_t size);
+void mem_copy(mem_t dst, size_t dst_size, mem_t src, size_t src_size, size_t len); // this might seem excessive, but reduces bounds checks on the user
+void mem_zero(mem_t block, size_t len);
+size_t mem_find(mem_t block, size_t block_size, mem_t search_data, size_t search_data_size); // returns offset into block or (size_t)-1
+size_t mem_find_last(mem_t block, size_t block_size, mem_t search_data, size_t search_data_size);
+bool mem_equals(mem_t a, size_t a_size, mem_t b, size_t b_size);
+int mem_cmp(mem_t a, size_t a_size, mem_t b, size_t b_size);
 
 uint16_t mem_area_code_get(void);
 void mem_area_code_set(uint16_t code);
 
-// much, much simpler interface for just raw pointers:
 
-void* mem_alloc(size_t cap, size_t align, size_t offset);
-void* mem_resize(void* ptr, size_t old_cap, size_t new_cap);
-void mem_copy(void* dst, size_t dst_cap, void* src, size_t src_cap, size_t len);
-void mem_free(void* ptr, size_t cap);
-void mem_zero(void* ptr, size_t len);
-
-void* mem_from_str(const char* str);
-bool mem_equals(void* a, void* b, size_t len);
-void* mem_find(const void* area, size_t cap, const void* search, size_t search_cap); // returns NULL if not there
-void* mem_find_last(const void* area, size_t cap, const void* search, size_t search_cap);
 
 
 
