@@ -250,81 +250,104 @@ size_t strid_len(strid_t id) {
 
 
 
-    // str needs to have been _allocated_ by the standard allocator (like strids), otherwise use strbuf_concat
-strbuf_t strbuf_from_str(char* str) {
-    strbuf_t b;
-    b.str = str;
-    b.len = strlen(str);
-    b.cap = b.len + 1;
-    return b;
+
+
+    // str needs to have been _allocated_ by the standard allocator (like strids), otherwise use strbuf_alloc+strbuf_concat
+strbuf_result_t strbuf_from_str(strbuf_t* b, char* str) {
+    strbuf_t ret;
+    if(b == NULL || str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    ret.str = str;
+    ret.len = strlen(str);
+    ret.cap = ret.len + 1;
+    b[0] = ret;
+    return STRBUF_OK;
 }
-strbuf_t strbuf_alloc(size_t initial_cap) {
-    strbuf_t b;
-    b.cap = initial_cap+1;
-    b.len = 0;
-    b.str = calloc(1, initial_cap+1);
-    if(b.str == NULL) return STRBUF_ALLOCATION_FAILURE;
-    else return b;
+strbuf_result_t strbuf_alloc(strbuf_t* b, size_t initial_cap) {
+    strbuf_t ret;
+    if(b == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    ret.cap = initial_cap+1;
+    ret.len = 0;
+    ret.str = calloc(1, initial_cap+1);
+    if(ret.str == NULL) return STRBUF_ERROR_FAILED_ALLOCATION;
+    b[0] = ret;
+    return STRBUF_OK;
 }
-strbuf_t strbuf_reserve(strbuf_t b, size_t additional_cap) {
-    return strbuf_resize(b, b.cap+additional_cap);
+strbuf_result_t strbuf_reserve(strbuf_t* b, size_t additional_cap) {
+    if(b == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    return strbuf_resize(b, b[0].cap+additional_cap);
 }
-strbuf_t strbuf_resize(strbuf_t b, size_t new_min_cap) {
+strbuf_result_t strbuf_resize(strbuf_t* b, size_t new_min_cap) {
     char* newbuf;
-    size_t new_cap = size_min(new_min_cap, b.len+1);
-    newbuf = realloc(b.str, new_cap+1);
-    if(newbuf == NULL) return STRBUF_ALLOCATION_FAILURE;
-    b.str = newbuf;
-    return b;
+    if(b == NULL || b[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    size_t newcap = size_min(new_min_cap, b[0].len+1);
+    newbuf = realloc(b[0].str, newcap);
+    if(newbuf == NULL) return STRBUF_ERROR_FAILED_ALLOCATION;
+    b[0].str = newbuf;
+    b[0].cap = newcap;
+    return STRBUF_OK;
 }
-strbuf_t strbuf_dup(strbuf_t b) {
+strbuf_result_t strbuf_dup(strbuf_t* copy, strbuf_t original) {
     strbuf_t bret;
-    bret.cap = b.cap;
-    bret.len = b.len;
-    bret.str = calloc(1, b.cap);
-    if(bret.str == NULL) return STRBUF_ALLOCATION_FAILURE;
-    memmove(bret.str, b.str, b.cap);
-    return bret;
+    if(copy == NULL || original.str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    bret.cap = original.cap;
+    bret.len = original.len;
+    bret.str = calloc(1, original.cap);
+    if(bret.str == NULL) return STRBUF_ERROR_FAILED_ALLOCATION;
+    memmove(bret.str, original.str, original.cap);
+    copy[0] = bret;
+    return STRBUF_OK;
 }
-void strbuf_free(strbuf_t b) {
-    free(b.str);
+strbuf_result_t strbuf_free(strbuf_t* b) {
+    if(b == NULL || b[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    free(b[0].str);
+    b[0].str = NULL;
+    b[0].cap = 0;
+    b[0].len = 0;
+    return STRBUF_OK;
 }
-strbuf_t strbuf_zero(strbuf_t b) {
-    memset(b.str, 0, b.cap);
-    b.len = 0;
-    return b;
+strbuf_t strbuf_zero(strbuf_t* b) {
+    if(b == NULL || b[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    memset(b[0].str, 0, b[0].cap);
+    b[0].len = 0;
+    return STRBUF_OK;
 }
-   // the next six functions return != buf for range or allocation failure. end is _inclusive_, begin/end are 0-indexed
-strbuf_t strbuf_replace_range(strbuf_t buf, size_t begin, size_t end, const char* str) {
-    size_t end = end_index+1;
+   // end is _inclusive_, begin/end are 0-indexed
+strbuf_result_t strbuf_replace_range(strbuf_t* buf, size_t begin, size_t end, const char* str) {
     return strbuf_replace_range_len(buf, begin, end, str, strlen(str));
 }
-strbuf_t strbuf_replace_range_len(strbuf_t buf, size_t begin, size_t end_index, const char* str, size_t len) {
-    size_t end = end_index+1;
-    if(begin >= end || len < end - begin) return STRBUF_ERROR;
-    if(end > buf.cap) (void) strbuf_resize(buf, end);
-    memmove(&buf.str[begin], str, end-begin);
-    return buf;
+strbuf_result_t strbuf_replace_range_len(strbuf_t* buf, size_t begin, size_t end_index, const char* str, size_t len) {
+    strbuf_result_t r; size_t end = end_index+1;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    if(begin >= end || len < end - begin) return STRBUF_ERROR_PARAMETER_OUT_OF_RANGE;
+    if(end > buf[0].cap) {
+        r = strbuf_resize(buf, end);
+        if(r != STRBUF_OK) return r;
+    }
+    memmove(&buf[0].str[begin], str, end-begin);
+    return STRBUF_OK;
 }
-strbuf_t strbuf_dup_slice(strbuf_t buf, size_t begin, size_t end_index) {
+strbuf_result_t strbuf_dup_slice(strbuf_t* slice, strbuf_t buf, size_t begin, size_t end_index) {
     strbuf_t bret; size_t end = end_index+1;
-    if(begin > buf.cap || end > buf.cap || begin >= end) return STRBUF_ERROR;
+    if(slice == NULL || buf.str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    if(begin > buf.cap || end > buf.cap || begin >= end) return STRBUF_ERROR_PARAMETER_OUT_OF_RANGE;
     bret.cap = end-begin+1;
     bret.len = end-begin;
     bret.str = calloc(1, bret.cap);
-    if(bret.str == NULL) return STRBUF_ALLOCATION_FAILURE;
+    if(bret.str == NULL) return STRBUF_ERROR_FAILED_ALLOCATION;
     memmove(bret.str, &buf.str[begin], bret.len);
-    return bret;
+    slice[0] = bret;
+    return STRBUF_OK;
 }
-strbuf_t strbuf_split_by_char(strbuf_t buf, char delim, strbuf_t** bufs, size_t* nr_bufs) {
+strbuf_result_t strbuf_split_by_char(strbuf_t buf, char delim, strbuf_t** bufs, size_t* nr_bufs) {
     return strbuf_split_by_str_len(buf, &delim, 1, bufs, nr_bufs);
 }
-strbuf_t strbuf_split_by_str(strbuf_t buf, char* delim, strbuf_t** bufs, size_t* nr_bufs) {
+strbuf_result_t strbuf_split_by_str(strbuf_t buf, char* delim, strbuf_t** bufs, size_t* nr_bufs) {
     return strbuf_split_by_str_len(buf, delim, strlen(delim), bufs, nr_bufs);
 }
-strbuf_t strbuf_split_by_str_len(strbuf_t buf, char* delim, size_t delim_len, strbuf_t** bufs, size_t* nr_bufs) {
-    char initial; int curr, last; int nr, nr_copied; strbuf_t* bs;
-    if(bufs == NULL || nr_bufs == NULL || delim_len > buf.len) return STRBUF_ERROR;
+strbuf_result_t strbuf_split_by_str_len(strbuf_t buf, char* delim, size_t delim_len, strbuf_t** bufs, size_t* nr_bufs) {
+    char initial; int curr, last; int nr, nr_copied; strbuf_t* bs; strbuf_result_t r;
+    if(buf.str == NULL || bufs == NULL || nr_bufs == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    if(delim_len > buf.len) return STRBUF_ERROR_PARAMETER_OUT_OF_RANGE;
     
     // first round: find the number of delims in buf
     nr = 0;
@@ -343,7 +366,15 @@ strbuf_t strbuf_split_by_str_len(strbuf_t buf, char* delim, size_t delim_len, st
     while(curr < buf.len - delim_len+1) {
         if(buf.str[curr] == initial && strncmp(&buf.str[curr], delim, delim_len) == 0) {
             if(last == curr) bs[nr_copied] = strbuf_from_str(strid(""));
-            else bs[nr_copied] = strbuf_dup_slice(buf, last, curr-1);
+            else {
+                r = strbuf_dup_slice(&bs[nr_copied], buf, last, curr-1);
+                if(r != STRBUF_OK) {
+                    for(int i = 0; i < nr_copied; i++) {
+                        strbuf_free(&bs[i]);
+                    }
+                    return r;
+                }
+            }
             nr_copied++; curr += delim_len; last = curr;
         } else {
             curr++;
@@ -353,8 +384,8 @@ strbuf_t strbuf_split_by_str_len(strbuf_t buf, char* delim, size_t delim_len, st
     else bs[nr_copied] = strbuf_dup_slice(buf, last, buf.len-1);
     nr_copied++;
     
-    if(nr+1 != nr_copied) return STRBUF_ERROR;
-    nr_bufs[0] = nr;
+    if(nr+1 != nr_copied) return STRBUF_ERROR_UNKNOWN;
+    nr_bufs[0] = nr+1;
     bufs[0] = bs;
     return buf;
 }
@@ -371,7 +402,7 @@ int strbuf_find_subindex(strbuf_t outer, size_t offset, strid_t inner) {
     // basically the same code as strid_subindex
     int i, inner_len = inner[-1], outer_len = outer.len;
     char initial;
-    if(inner_len > outer_len) return -1;
+    if(buf.str == NULL || inner_len > outer_len) return -1;
                 // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
     else if(inner_len == outer_len) return ((strcmp(outer.str, inner)==0)-1);
     
@@ -386,7 +417,7 @@ int strbuf_find_last_subindex(strbuf_t outer, size_t offset, strid_t inner) {
     // basically the same code as strid_subindex, but in reverse
     int i, inner_len = inner[-1], outer_len = outer.len;
     char final;
-    if(inner_len > outer_len) return -1;
+    if(buf.str == NULL || inner_len > outer_len) return -1;
                 // returns true-1 = 0 on equality, i.e. at index 0, and false-1 = -1 on inequality
     else if(inner_len == outer_len) return ((strcmp(outer.str, inner)==0)-1);
     
@@ -398,94 +429,499 @@ int strbuf_find_last_subindex(strbuf_t outer, size_t offset, strid_t inner) {
     return -1;
 }
 
-strbuf_t strbuf_concat(strbuf_t buf, const char* str) {
+strbuf_result_t strbuf_concat(strbuf_t* buf, const char* str) {
     return strbuf_concat_len(buf, str, strlen(str));
 }
-strbuf_t strbuf_concat_len(strbuf_t buf, const char* str, size_t len) {
-    return strbuf_replace_range_len(buf, buf.len, buf.len+len, str, len);
+strbuf_result_t strbuf_concat_len(strbuf_t* buf, const char* str, size_t len) {
+    if(buf == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    return strbuf_replace_range_len(buf, buf[0].len, buf[0].len+len, str, len);
 }
 
-
-static strbuf_t strbuf_fmt_uint(size_t bits, format_params_t* params, strbuf_int_format_t format) {
-    strbuf_t fmt = strbuf_alloc(10), b;
-    fmt = strbuf_concat(fmt, "%");
-    if(format == STRBUF_INT_FORMAT_OCTAL_WITH_PREFIX_NONZERO ||
-        format == STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX_NONZERO ||
-        format == STRBUF_INT_FORMAT_HEXADECIMAL_UPPER_CASE_WITH_PREFIX_NONZERO) {
-        fmt = strbuf_concat(fmt, "#");
+static strbuf_result_t strbuf_fmtstr_int(strbuf_t* fmt, size_t bits, format_params_t* params) {
+    strbuf_t ret; strbuf_result_t r; const char* s;
+    
+    if(fmt == NULL) return STRBUF_ERROR_UNKNOWN;
+    r = strbuf_alloc(&ret, 10);
+    if(r != STRBUF_OK) return r;
+    r = strbuf_concat(&ret, "%");
+    if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    if(format == STRBUF_UINT_FORMAT_OCTAL_WITH_PREFIX_NONZERO ||
+        format == STRBUF_UINT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX_NONZERO ||
+        format == STRBUF_UINT_FORMAT_HEXADECIMAL_UPPER_CASE_WITH_PREFIX_NONZERO) {
+        r = strbuf_concat(&ret, "#");
+        if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
     }
     if(params != NULL) {
         switch(params.sign_behavior) {
         case STRBUF_SIGN_BEHAVIOR_ONLY_NEGATIVE:
             break;
         case STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_PLUS:
-            fmt = strbuf_concat(fmt, "+");
+            r = strbuf_concat(&ret, "+");
+            if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
             break;
         case STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_SPACE  :
-            fmt = strbuf_concat(fmt, " ");
+            r = strbuf_concat(&ret, " ");
+            if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
             break;
         default:
-            strbuf_free(fmt);
-            return STRBUF_ERROR;
+            strbuf_free(&ret);
+            return STRBUF_ERROR_PARAMETER_INVALID_ENUM;
         }
-        fmt = strbuf_concat(fmt, ".*");
+        r = strbuf_concat(&ret, ".*");
+        if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    }
+    if(bits == 8) s = PRIi8;
+    else if(bits == 16) s = PRIi16;
+    else if(bits == 32) s = PRIi32;
+    else if(bits == 64) s = PRIi63;
+    else {
+        strbuf_free(&ret);
+        return STRBUF_ERROR_UNKNOWN;
+    }
+    r = strbuf_concat(&ret, s);
+    if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    
+    fmt[0] = ret;
+    return STRBUF_OK;
+}
+static strbuf_result_t strbuf_fmtstr_uint(strbuf_t* fmt, size_t bits, format_params_t* params, strbuf_uint_format_t format) {
+    strbuf_t ret; strbuf_result_t r; const char* s;
+    
+    if(fmt == NULL) return STRBUF_ERROR_UNKNOWN;
+    r = strbuf_alloc(&ret, 10);
+    if(r != STRBUF_OK) return r;
+    r = strbuf_concat(&ret, "%");
+    if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    if(format == STRBUF_UINT_FORMAT_OCTAL_WITH_PREFIX_NONZERO ||
+        format == STRBUF_UINT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX_NONZERO ||
+        format == STRBUF_UINT_FORMAT_HEXADECIMAL_UPPER_CASE_WITH_PREFIX_NONZERO) {
+        r = strbuf_concat(&ret, "#");
+        if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    }
+    if(params != NULL) {
+        switch(params.sign_behavior) {
+        case STRBUF_SIGN_BEHAVIOR_ONLY_NEGATIVE:
+            break;
+        case STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_PLUS:
+            r = strbuf_concat(&ret, "+");
+            if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+            break;
+        case STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_SPACE  :
+            r = strbuf_concat(&ret, " ");
+            if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+            break;
+        default:
+            strbuf_free(&ret);
+            return STRBUF_ERROR_PARAMETER_INVALID_ENUM;
+        }
+        r = strbuf_concat(&ret, ".*");
+        if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
     }
     switch(format) {
-    case STRBUF_INT_FORMAT_DECIMAL:
-        if(bits == 8) fmt = strbuf_concat(PRIu8);
-        else if(bits == 16) fmt = strbuf_concat(PRIu16);
-        else if(bits == 32) fmt = strbuf_concat(PRIu32);
-        else if(bits == 64) fmt = strbuf_concat(PRIu63);
+    case STRBUF_UINT_FORMAT_DECIMAL:
+        if(bits == 8) s = PRIu8;
+        else if(bits == 16) s = PRIu16;
+        else if(bits == 32) s = PRIu32;
+        else if(bits == 64) s = PRIu63;
         else {
-            strbuf_free(fmt);
-            return STRBUF_ERROR;
+            strbuf_free(&ret);
+            return STRBUF_ERROR_UNKNOWN;
         }
         break;
-    case STRBUF_INT_FORMAT_OCTAL:
-    case STRBUF_INT_FORMAT_OCTAL_WITH_PREFIX:
-        if(bits == 8) fmt = strbuf_concat(PRIo8);
-        else if(bits == 16) fmt = strbuf_concat(PRIo16);
-        else if(bits == 32) fmt = strbuf_concat(PRIo32);
-        else if(bits == 64) fmt = strbuf_concat(PRIo63);
+    case STRBUF_UINT_FORMAT_OCTAL:
+    case STRBUF_UINT_FORMAT_OCTAL_WITH_PREFIX:
+        if(bits == 8) s = PRIo8;
+        else if(bits == 16) s = PRIo16;
+        else if(bits == 32) s = PRIo32;
+        else if(bits == 64) s = PRIo63;
         else {
-            strbuf_free(fmt);
-            return STRBUF_ERROR;
+            strbuf_free(&ret);
+            return STRBUF_ERROR_UNKNOWN;
         }
         break;
-    case STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE:
-    case STRBUF_INT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX:
-        fmt = strbuf_concat(PRIx8);
+    case STRBUF_UINT_FORMAT_HEXADECIMAL_LOWER_CASE:
+    case STRBUF_UINT_FORMAT_HEXADECIMAL_LOWER_CASE_WITH_PREFIX:
+        if(bits == 8) s = PRIx8;
+        else if(bits == 16) s = PRIx16;
+        else if(bits == 32) s = PRIx32;
+        else if(bits == 64) s = PRIx63;
+        else {
+            strbuf_free(&ret);
+            return STRBUF_ERROR_UNKNOWN;
+        }
         break;
-    case STRBUF_INT_FORMAT_HEXADECIMAL_UPPER_CASE:
-    case STRBUF_INT_FORMAT_HEXADECIMAL_UPPER_CASE_WITH_PREFIX:
-        fmt = strbuf_concat(PRIX8);
+    case STRBUF_UINT_FORMAT_HEXADECIMAL_UPPER_CASE:
+    case STRBUF_UINT_FORMAT_HEXADECIMAL_UPPER_CASE_WITH_PREFIX:
+        if(bits == 8) s = PRIX8;
+        else if(bits == 16) s = PRIX16;
+        else if(bits == 32) s = PRIX32;
+        else if(bits == 64) s = PRIX63;
+        else {
+            strbuf_free(&ret);
+            return STRBUF_ERROR_UNKNOWN;
+        }
         break;
     default:
-        strbuf_free(fmt);
-        return STRBUF_ERROR;
+        strbuf_free(&ret);
+        return STRBUF_ERROR_PARAMETER_INVALID_ENUM;
     }
+    r = strbuf_concat(&ret, s);
+    if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    
+    fmt[0] = ret;
+    return STRBUF_OK;
+}
+static strbuf_result_t strbuf_fmtstr_float(strbuf_t* fmt, size_t bits, format_params_t* params, strbuf_float_format_t format) {
+    strbuf_t ret; strbuf_result_t r; const char* s;
+    
+    if(fmt == NULL) return STRBUF_ERROR_UNKNOWN;
+    r = strbuf_alloc(&ret, 10);
+    if(r != STRBUF_OK) return r;
+    r = strbuf_concat(&ret, "%");
+    if(r != STRBUF_OK) { strbuf_free(&ret); return r; } 
+    if(format == STRBUF_FLOAT_FORMAT_NO_EXPONENT_FORCE_DECIMAL_POINT ||
+        format == STRBUF_FLOAT_FORMAT_SCIENTIFIC_FORCE_DECIMAL_POINT ||
+        format == STRBUF_FLOAT_FORMAT_SCIENTIFIC_FORCE_DECIMAL_POINT_UPPER_CASE_E ||
+        format == STRBUF_FLOAT_FORMAT_MIXED_FORCE_DECIMAL_POINT ||
+        format == STRBUF_FLOAT_FORMAT_MIXED_FORCE_DECIMAL_POINT_UPPER_CASE_E) {
+        r = strbuf_concat(&ret, "#");
+        if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    }
+    if(params != NULL) {
+        switch(params.sign_behavior) {
+        case STRBUF_SIGN_BEHAVIOR_ONLY_NEGATIVE:
+            break;
+        case STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_PLUS:
+            r = strbuf_concat(&ret, "+");
+            if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+            break;
+        case STRBUF_SIGN_BEHAVIOR_POSITIVE_AS_SPACE  :
+            r = strbuf_concat(&ret, " ");
+            if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+            break;
+        default:
+            strbuf_free(&ret);
+            return STRBUF_ERROR_PARAMETER_INVALID_ENUM;
+        }
+        r = strbuf_concat(&ret, ".*");
+        if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    }
+    switch(format) {
+    case STRBUF_FLOAT_FORMAT_NO_EXPONENT:
+    case STRBUF_FLOAT_FORMAT_NO_EXPONENT_FORCE_DECIMAL_POINT:
+        s = "f";
+        break;
+    case STRBUF_FLOAT_FORMAT_SCIENTIFIC:
+    case STRBUF_FLOAT_FORMAT_SCIENTIFIC_FORCE_DECIMAL_POINT:
+        s = "e";
+        break;
+    case STRBUF_FLOAT_FORMAT_SCIENTIFIC_UPPER_CASE_E:
+    case STRBUF_FLOAT_FORMAT_SCIENTIFIC_FORCE_DECIMAL_POINT_UPPER_CASE_E:
+        s = "E";
+        break;
+    case STRBUF_FLOAT_FORMAT_MIXED:
+    case STRBUF_FLOAT_FORMAT_MIXED_FORCE_DECIMAL_POINT:
+        s = "g";
+        break;
+    case STRBUF_FLOAT_FORMAT_MIXED_UPPER_CASE_E:
+    case STRBUF_FLOAT_FORMAT_MIXED_FORCE_DECIMAL_POINT_UPPER_CASE_E:
+        s = "G";
+        break;
+    default:
+        strbuf_free(&ret);
+        return STRBUF_ERROR_PARAMETER_INVALID_ENUM;
+    }
+    r = strbuf_concat(&ret, s);
+    if(r != STRBUF_OK) { strbuf_free(&ret); return r; }
+    
+    fmt[0] = ret;
+    return STRBUF_OK;
+}
+
+<?c
+enum {T_INT, T_UINT, T_FLOAT} type_kind[10] = {T_INT, T_INT, T_INT, T_INT, T_UINT, T_UINT, T_UINT, T_UINT, T_FLOAT, T_FLOAT};
+char** type_size[10] = {"8", "16", "32", "64", "8", "16", "32", "64", "32", "64"};
+for(int i = 0; i < 10; i++) {
+    char* tk, ts, params_end, fmststr_params_end;
+    ts = type_size[i];
+    switch(type_kind[i]) {
+    case T_INT:
+        tk = "int";
+        params_end =  "";
+        fmststr_params_end = "";
+        break;
+    case T_UINT:
+        tk = "uint";
+        params_end =  ", strbuf_uint_format_t format";
+        fmststr_params_end = ", format";
+        break;
+    case T_FLOAT:
+        tk = "float";
+        params_end =  ", strbuf_float_format_t format";
+        fmststr_params_end = ", format";
+        break;
+    }
+?>
+strbuf_result_t strbuf_concat_uint8(strbuf_t* buf, @tk@@ts@_t val, format_params_t* params @fmststr_params_end@) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_@tk@(&fmt, @ts@, params @fmststr_params_end@);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+<?c
+}
+?>
+
+
+
+
+static strbuf_result_t strbuf_concat_generic(strbuf_t* buf, strbuf_t fmt, format_params_t* params, ...) {
     
 }
 
-strbuf_t strbuf_concat_int8(strbuf_t buf, int8_t val, format_params_t* params);
-strbuf_t strbuf_concat_int16(strbuf_t buf, int16_t val, format_params_t* params);
-strbuf_t strbuf_concat_int32(strbuf_t buf, int32_t val, format_params_t* params);
-strbuf_t strbuf_concat_int64(strbuf_t buf, int64_t val, format_params_t* params);
-strbuf_t strbuf_concat_uint8(strbuf_t buf, uint8_t val, format_params_t* params, strbuf_int_format_t format) {
+
+strbuf_result_t strbuf_concat_int8(strbuf_t* buf, int8_t val, format_params_t* params) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_int(&fmt, 8, params);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
 }
-strbuf_t strbuf_concat_uint16(strbuf_t buf, uint16_t val, format_params_t* params, strbuf_int_format_t format);
-strbuf_t strbuf_concat_uint32(strbuf_t buf, uint32_t val, format_params_t* params, strbuf_int_format_t format);
-strbuf_t strbuf_concat_uint64(strbuf_t buf, uint64_t val, format_params_t* params, strbuf_int_format_t format);
-strbuf_t strbuf_concat_float32(strbuf_t buf, float32_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format);
-strbuf_t strbuf_concat_float64(strbuf_t buf, float64_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format);
-strbuf_t strbuf_concat_char(strbuf_t buf, char val);
-strbuf_t strbuf_concat_ptr(strbuf_t buf, void* ptr);
+strbuf_result_t strbuf_concat_int16(strbuf_t* buf, int16_t val, format_params_t* params) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_int(&fmt, 16, params);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_int32(strbuf_t* buf, int32_t val, format_params_t* params) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_int(&fmt, 32, params);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_int64(strbuf_t* buf, int64_t val, format_params_t* params) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_int(&fmt, 64, params);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_uint8(strbuf_t* buf, uint8_t val, format_params_t* params, strbuf_uint_format_t format) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_uint(&fmt, 8, params, format);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_uint16(strbuf_t* buf, uint16_t val, format_params_t* params, strbuf_uint_format_t format) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_uint(&fmt, 16, params, format);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_uint32(strbuf_t* buf, uint32_t val, format_params_t* params, strbuf_uint_format_t format) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_uint(&fmt, 32, params, format);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_uint64(strbuf_t* buf, uint64_t val, format_params_t* params, strbuf_uint_format_t format) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_uint(&fmt, 64, params, format);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_float32(strbuf_t* buf, float32_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_float(&fmt, 32, params, format);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_float64(strbuf_t* buf, float64_t val, format_params_t* params, char decimal_point, strbuf_float_format_t format) {
+    strbuf_t fmt; size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    r = strbuf_fmtstr_float(&fmt, 64, params, format);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, fmt.str, val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { (void) strbuf_free(&fmt); return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, fmt.str, val);
+    if(test_len != len_format) { (void) strbuf_free(&fmt); return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    (void) strbuf_free(&fmt);
+    
+    return STRBUF_OK;
+}
+strbuf_result_t strbuf_concat_char(strbuf_t* buf, char val) {
+    return strbuf_concat_len(buf, &val, 1);
+}
+strbuf_result_t strbuf_concat_ptr(strbuf_t* buf, void* ptr) {
+    size_t len_format, test_len; strbuf_result_t r;
+    if(buf == NULL || buf[0].str == NULL) return STRBUF_ERROR_PARAMETER_NULL_POINTER;
+    
+    // we reserve 1 byte more to allow for the NUL byte
+    len_format = snprintf(NULL, 0, "%p", val);
+    r = strbuf_reserve(buf, len_format+1);
+    if(r != STRBUF_OK) { return r; }
+    
+    test_len = snprintf(&buf[0].str[buf[0].len], len_format, "%p", val);
+    if(test_len != len_format) { return STRBUF_ERROR_UNKNOWN; }
+    buf[0].len += test_len;
+    
+    return STRBUF_OK;
+}
 
 // all of these return the length of what's parsed, typically to be +=-ed to the offset variable
-// width = 0 is the default behavior, and will set it to ignore the width, with a number > 0 it will not consume more than those chars (and in the case of strbuf_read_char _exactly_ that many chars)
+// width = 0 is the default behavior, and will set it to ignore the width, with a number > 0 it will not consume more than those chars
+//  (and in the case of strbuf_read_char _exactly_ that many chars)
+// None of these functions change buf, they return 0 if nothing was to parse / if offset was out of range, and will then not write anything to the out pointers.
+size_t strbuf_read_whitespace(strbuf_t buf, size_t offset, size_t width);
 size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expected_const);
 size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t allowed_chars_first, strid_t allowed_chars, strid_t* out_id);
-size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id); // inverse bc it excludes instead
+    // inverse bc it excludes instead
+size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id);
 size_t strbuf_read_decimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out);
 size_t strbuf_read_octal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
 size_t strbuf_read_hexadecimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out, bool expect_prefix);
@@ -495,6 +931,15 @@ size_t strbuf_read_hexadecimal_uint_literal(strbuf_t buf, size_t offset, size_t 
 size_t strbuf_read_float_literal(strbuf_t buf, size_t offset, size_t width, float64_t* out, bool allow_exponent);
 size_t strbuf_read_char(strbuf_t buf, size_t offset, size_t width, char* out);
 size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out);
+
+
+
+
+
+
+
+
+
 
 
 
