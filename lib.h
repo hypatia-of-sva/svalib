@@ -6,6 +6,18 @@
 #include <stdint.h>
 
 
+typedef uint8_t bool;
+#if sizeof(void*) == 4
+//32 bit
+typedef int32_t ptrdiff_t, ssize_t;
+typedef uint32_t uintptr_t, size_t;
+#elif sizeof(void*) == 8
+//64 bit
+typedef int64_t ptrdiff_t, ssize_t;
+typedef uint64_t uintptr_t, size_t;
+#else
+#error "Only 32 or 64 bit systems supported!"
+#endif
 
 
 
@@ -601,6 +613,8 @@ float64_t complex64_abs(complex64_t z);
 float32_t complex32_arg(complex32_t z);
 float64_t complex64_arg(complex64_t z);
 
+see also future lib directions!
+
 
 /* quaternion number support */
 
@@ -713,6 +727,42 @@ size_t mem_find(mem_t block, size_t block_size, mem_t search_data, size_t search
 size_t mem_find_last(mem_t block, size_t block_size, mem_t search_data, size_t search_data_size);
 bool mem_equals(mem_t a, size_t a_size, mem_t b, size_t b_size);
 int mem_cmp(mem_t a, size_t a_size, mem_t b, size_t b_size);
+
+/* Little / Big Endian integer and float read/write functions. return false when not enough space */
+bool mem_read_uint16le(mem_t block, size_t len, size_t offset, uint16_t* out);
+bool mem_read_uint16be(mem_t block, size_t len, size_t offset, uint16_t* out);
+bool mem_read_uint32le(mem_t block, size_t len, size_t offset, uint32_t* out);
+bool mem_read_uint32be(mem_t block, size_t len, size_t offset, uint32_t* out);
+bool mem_read_uint64le(mem_t block, size_t len, size_t offset, uint64_t* out);
+bool mem_read_uint64be(mem_t block, size_t len, size_t offset, uint64_t* out);
+bool mem_read_int16le(mem_t block, size_t len, size_t offset, int16_t* out);
+bool mem_read_int16be(mem_t block, size_t len, size_t offset, int16_t* out);
+bool mem_read_int32le(mem_t block, size_t len, size_t offset, int32_t* out);
+bool mem_read_int32be(mem_t block, size_t len, size_t offset, int32_t* out);
+bool mem_read_int64le(mem_t block, size_t len, size_t offset, int64_t* out);
+bool mem_read_int64be(mem_t block, size_t len, size_t offset, int64_t* out);
+bool mem_read_float32le(mem_t block, size_t len, size_t offset, float32_t* out);
+bool mem_read_float32be(mem_t block, size_t len, size_t offset, float32_t* out);
+bool mem_read_float64le(mem_t block, size_t len, size_t offset, float64_t* out);
+bool mem_read_float64be(mem_t block, size_t len, size_t offset, float64_t* out);
+bool mem_write_uint16le(mem_t block, size_t len, size_t offset, uint16_t val);
+bool mem_write_uint16be(mem_t block, size_t len, size_t offset, uint16_t val);
+bool mem_write_uint32le(mem_t block, size_t len, size_t offset, uint32_t val);
+bool mem_write_uint32be(mem_t block, size_t len, size_t offset, uint32_t val);
+bool mem_write_uint64le(mem_t block, size_t len, size_t offset, uint64_t val);
+bool mem_write_uint64be(mem_t block, size_t len, size_t offset, uint64_t val);
+bool mem_write_int16le(mem_t block, size_t len, size_t offset, int16_t val);
+bool mem_write_int16be(mem_t block, size_t len, size_t offset, int16_t val);
+bool mem_write_int32le(mem_t block, size_t len, size_t offset, int32_t val);
+bool mem_write_int32be(mem_t block, size_t len, size_t offset, int32_t val);
+bool mem_write_int64le(mem_t block, size_t len, size_t offset, int64_t val);
+bool mem_write_int64be(mem_t block, size_t len, size_t offset, int64_t val);
+bool mem_write_float32le(mem_t block, size_t len, size_t offset, float32_t val);
+bool mem_write_float32be(mem_t block, size_t len, size_t offset, float32_t val);
+bool mem_write_float64le(mem_t block, size_t len, size_t offset, float64_t val);
+bool mem_write_float64be(mem_t block, size_t len, size_t offset, float64_t val);
+
+
 
 // interesting idea; where to put?
 //uint16_t mem_area_code_get(void);
@@ -851,7 +901,6 @@ size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out);
 
 
 
-/* Add a unicode lib for strings like these? */
 
 
 
@@ -866,27 +915,189 @@ size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out);
 
 
 
+/* unicode lib based on utf8proc */
+
+typedef enum unicode_result_t {
+    UNICODE_OK = 0,
+    UNICODE_ERROR_ALLOCATION_FAILURE = -1,
+    UNICODE_ERROR_STRING_TOO_LONG = -2,
+    UNICODE_ERROR_INVALID_ENCODING = -3,
+    UNICODE_ERROR_UNASSIGNED_CODEPOINT_FOUND_UNDER_FLAG = -4,
+    UNICODE_ERROR_INVALID_PARAM = -5,
+    UNICODE_RESULT_MAX_ENUM = 0x7f
+} unicode_result_t;
+typedef enum unicode_encoding_t {
+    CHAR_ENCODING_UTF8 = 0,
+    CHAR_ENCODING_UTF16LE = 1,
+    CHAR_ENCODING_UTF16BE = 2,
+    CHAR_ENCODING_UTF32LE = 3,
+    CHAR_ENCODING_UTF32BE = 4,
+    CHAR_ENCODING_MAX_ENUM = 0x7f
+} unicode_encoding_t;
+typedef enum unicode_category_t {
+    UNICODE_CATEGORY_CN_OTHER_NOT_ASSIGNED         = 0,
+    UNICODE_CATEGORY_LU_LETTER_UPPERCASE           = 1,
+    UNICODE_CATEGORY_LL_LETTER_LOWERCASE           = 2,
+    UNICODE_CATEGORY_LT_LETTER_TITLECASE           = 3,
+    UNICODE_CATEGORY_LM_LETTER_MODIFIER            = 4,
+    UNICODE_CATEGORY_LO_LETTER_OTHER               = 5,
+    UNICODE_CATEGORY_MN_MARK_NONSPACING            = 6,
+    UNICODE_CATEGORY_MC_MARK_SPACING_COMBINING     = 7,
+    UNICODE_CATEGORY_ME_MARK_ENCLOSING             = 8,
+    UNICODE_CATEGORY_ND_NUMBER_DECIMAL_DIGIT       = 9,
+    UNICODE_CATEGORY_NL_NUMBER_LETTER             = 10,
+    UNICODE_CATEGORY_NO_NUMBER_OTHER              = 11,
+    UNICODE_CATEGORY_PC_PUNCTUATION_CONNECTOR     = 12,
+    UNICODE_CATEGORY_PD_PUNCTUATION_DASH          = 13,
+    UNICODE_CATEGORY_PS_PUNCTUATION_OPEN          = 14,
+    UNICODE_CATEGORY_PE_PUNCTUATION_CLOSE         = 15,
+    UNICODE_CATEGORY_PI_PUNCTUATION_INITIAL_QUOTE = 16,
+    UNICODE_CATEGORY_PF_PUNCTUATION_FINAL_QUOTE   = 17,
+    UNICODE_CATEGORY_PO_PUNCTUATION_OTHER         = 18,
+    UNICODE_CATEGORY_SM_SYMBOL_MATH               = 19,
+    UNICODE_CATEGORY_SC_SYMBOL_CURRENCY           = 20,
+    UNICODE_CATEGORY_SK_SYMBOL_MODIFIER           = 21,
+    UNICODE_CATEGORY_SO_SYMBOL_OTHER              = 22,
+    UNICODE_CATEGORY_ZS_SEPERATOR_SPACE           = 23,
+    UNICODE_CATEGORY_ZL_SEPERATOR_LINE            = 24,
+    UNICODE_CATEGORY_ZP_SEPERATOR_PARAGRAPH       = 25,
+    UNICODE_CATEGORY_CC_OTHER_CONTROL             = 26,
+    UNICODE_CATEGORY_CF_OTHER_FORMAT              = 27,
+    UNICODE_CATEGORY_CS_OTHER_SURROGATE           = 28,
+    UNICODE_CATEGORY_CO_OTHER_PRIVATE_USE         = 29,
+} unicode_category_t;
+typedef enum unicode_bidirectional_character_class_t {
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_L_LTR                          = 1,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_LRE_LTR_EMBEDDING              = 2,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_LRO_LTR_OVERRIDE               = 3,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_R_RTL                          = 4,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_AL_RTL_ARABIC                  = 5,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_RLE_RTL_EMBEDDING              = 6,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_RLO_RTL_OVERRIDE               = 7,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_PDF_POP_DIRECTIONAL_FORMAT     = 8,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_EN_EUROPEAN_NUMBER             = 9,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_ES_EUROPEAN_SEPERATOR         = 10,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_ET_EUROPEAN_NUMBER_TERMINATOR = 11,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_AN_ARABIC_NUMBER              = 12,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_CS_COMMON_NUMBER_SEPARATOR    = 13,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_NSM_NONSPACING_MARK           = 14,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_BN_BOUNDARY_NEUTRAL           = 15,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_B_PARAGRAPH_SEPARATOR         = 16,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_S_SEGMENT_SEPARATOR           = 17,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_WS_WHITESPACE                 = 18,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_ON_OTHER_NEUTRALS             = 19,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_LRI_LTR_ISOLATE               = 20,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_RLI_RTL_ISOLATE               = 21,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_FSI_FIRST_STRONG_ISOLATE      = 22,
+    UNICODE_BIDIRECTIONAL_CHARACTER_CLASS_PDI_POP_DIRECTIONAL_ISOLATE   = 23,
+} unicode_bidirectional_character_class_t;
+typedef enum unicode_decomposition_type_t {
+    UNICODE_DECOMPOSITION_TYPE_FONT      = 1,
+    UNICODE_DECOMPOSITION_TYPE_NOBREAK   = 2,
+    UNICODE_DECOMPOSITION_TYPE_INITIAL   = 3,
+    UNICODE_DECOMPOSITION_TYPE_MEDIAL    = 4,
+    UNICODE_DECOMPOSITION_TYPE_FINAL     = 5,
+    UNICODE_DECOMPOSITION_TYPE_ISOLATED  = 6,
+    UNICODE_DECOMPOSITION_TYPE_CIRCLE    = 7,
+    UNICODE_DECOMPOSITION_TYPE_SUPER     = 8,
+    UNICODE_DECOMPOSITION_TYPE_SUB       = 9,
+    UNICODE_DECOMPOSITION_TYPE_VERTICAL = 10,
+    UNICODE_DECOMPOSITION_TYPE_WIDE     = 11,
+    UNICODE_DECOMPOSITION_TYPE_NARROW   = 12,
+    UNICODE_DECOMPOSITION_TYPE_SMALL    = 13,
+    UNICODE_DECOMPOSITION_TYPE_SQUARE   = 14,
+    UNICODE_DECOMPOSITION_TYPE_FRACTION = 15,
+    UNICODE_DECOMPOSITION_TYPE_COMPAT   = 16,
+} unicode_decomposition_type_t;
+typedef enum unicode_boundclass_t {
+/* Boundclass property. (TR29) */
+    UNICODE_BOUNDCLASS_START                          =  0, 
+    UNICODE_BOUNDCLASS_OTHER                          =  1, 
+    UNICODE_BOUNDCLASS_CR                             =  2, 
+    UNICODE_BOUNDCLASS_LF                             =  3, 
+    UNICODE_BOUNDCLASS_CONTROL                        =  4, 
+    UNICODE_BOUNDCLASS_EXTEND                         =  5, 
+    UNICODE_BOUNDCLASS_L                              =  6, 
+    UNICODE_BOUNDCLASS_V                              =  7, 
+    UNICODE_BOUNDCLASS_T                              =  8, 
+    UNICODE_BOUNDCLASS_LV                             =  9, 
+    UNICODE_BOUNDCLASS_LVT                            = 10, 
+    UNICODE_BOUNDCLASS_REGIONAL_INDICATOR             = 11, 
+    UNICODE_BOUNDCLASS_SPACINGMARK                    = 12, 
+    UNICODE_BOUNDCLASS_PREPEND                        = 13, 
+    UNICODE_BOUNDCLASS_ZWJ_ZERO_WIDTH_JOINER          = 14,
+    
+    /* the following are no longer used in Unicode 11, but we keep
+       the constants here for backward compatibility */
+    UNICODE_BOUNDCLASS_EMOJI_BASE                     = 15,
+    UNICODE_BOUNDCLASS_EMOJI_MODIFIER                 = 16,
+    UNICODE_BOUNDCLASS_GLUE_AFTER_ZWJ                 = 17,
+    UNICODE_BOUNDCLASS_EMOJI_BASE_PLUS_GLUE_AFTER_ZWJ = 18,
+
+    /* the Extended_Pictographic property is used in the Unicode 11
+       grapheme-boundary rules, so we store it in the boundclass field */
+    UNICODE_BOUNDCLASS_EXTENDED_PICTOGRAPHIC          = 19,
+    UNICODE_BOUNDCLASS_EXTENDED_PICTOGRAPHIC_PLUS_ZWJ = 20,
+} unicode_boundclass_t;
+typedef enum unicode_indic_conjunct_break_t {
+/** Indic_Conjunct_Break property. (TR44) */
+    UNICODE_INDIC_CONJUNCT_BREAK_NONE = 0,
+    UNICODE_INDIC_CONJUNCT_BREAK_LINKER = 1,
+    UNICODE_INDIC_CONJUNCT_BREAK_CONSONANT = 2,
+    UNICODE_INDIC_CONJUNCT_BREAK_EXTEND = 3,
+} unicode_indic_conjunct_break_t;
+
+typedef struct unicode_properties_t {
+    unicode_category_t category;
+    unicode_bidirectional_character_class_t bidi_class;
+    unicode_decomposition_type_t decomp_type;
+    unicode_boundclass_t boundclass;
+    unicode_indic_conjunct_break_t indic_conjunct_break;
+    bool islower, isupper, bidi_mirrored, comp_exclusion, control_boundary, ambiguous_width, ignorable;
+    uint8_t charwidth;
+    uint32_t corresponding_lower, corresponding_upper, corresponding_title;
+} unicode_properties_t;
+
+unicode_result_t unicode_get_character_properties(uint32_t codepoint, unicode_properties_t* out_properties);
+
+size_t unicode_strbuf_read_codepoint(strbuf_t buf, size_t offset, unicode_encoding_t encoding, uint32_t* out); /* returns 0 for invalid codepoint and byte-size of codepoint otherwise */
+unicode_result_t unicode_strbuf_transform_encoding(strbuf_t* new_buf, strbuf_t buf, char_encoding_t old_encoding, char_encoding_t new_encoding);
+
+/*
+ * In data file:
+ * uint16_t utf8proc_sequences[12961]
+ * uint16_t utf8proc_stage1table[4352]
+ * uint16_t utf8proc_stage2table[46336]
+ * property_t utf8proc_properties[8391] (22 byte struct)
+ * int32_t utf8proc_combinations_second[961]
+ * int32_t utf8proc_combinations_combined[961]
+ *      so 312.1 kB of data. Do we really need all this?
+ * We really only need the category. There are 30 categories,
+ * so we need 5 bytes per storage, so in principle 8391*(5/8) = 5kB
+ *  */
 
 
 
-typedef enum char_type_t {
-    CHAR_TYPE_CONTROL = 0,
-    CHAR_TYPE_LETTER_LOWERCASE = 1,
-    CHAR_TYPE_LETTER_UPPERCASE = 2,
-    CHAR_TYPE_DIGIT = 3,
-    CHAR_TYPE_WHITESPACE = 4,
-    CHAR_TYPE_PUNCTUATION = 5,
-    CHAR_TYPE_MAX_ENUM = 0x7f
-} char_type_t;
-char_type_t char_type(uint32_t character);
-uint32_t char_to_uppercase(uint32_t character);
-uint32_t char_to_lowercase(uint32_t character);
+
+open from stdlib C23:
+div_t, ldiv_t, lldiv_t, abs, labs, llabs, div, ldiv, lldiv
+bsearch, qsort
+call_once
+EXIT_FAILURE, EXIT_SUCCESS, abort, atexit, at_quick_exit, exit, _Exit, quick_exit, 
+getenv, system
+memalignment
+
+
+
+
+
+
 
 
 /* I/O and Filesystem library */
 
 
-typedef buf_t path_t;
+typedef strid_t path_t;
 
 bool32_t path_exists(path_t p);
 path_t   path_make_absolute(path_t p);

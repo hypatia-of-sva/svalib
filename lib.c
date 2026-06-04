@@ -190,7 +190,6 @@ uint64_t entropy_uint64(void) {
 
 
 /* memory library */
-
 mem_t mem_alloc(size_t size) {
     if(size == 0) return (mem_t)NULL;
     return (mem_t) malloc(size);
@@ -209,6 +208,7 @@ mem_t mem_alloc_align(size_t size, size_t align) {
     if(!is_power_of_2(align)) return (mem_t)NULL;
 #ifdef WIN32
 // we can also use _aligned_offset_malloc here - but there is no equivalent of that on unix side without writing a new allocator.
+// (similarly to how free_aligned_sized and free_sized are not yet available on most platforms)
     return (mem_t) _aligned_alloc(size, align);
 #else
     void* ptr;
@@ -288,12 +288,206 @@ int mem_cmp(mem_t a, size_t a_size, mem_t b, size_t b_size) {
 
 
 
+/* Little / Big Endian integer and float read/write functions. return false when not enough space */
+bool mem_read_uint16le(mem_t block, size_t len, size_t offset, uint16_t* out) {
+    uint8_t *byte_ptr; uint16_t v = 0;
+    if(offset + 2 > len || out == NULL) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    v |= byte_ptr[0];
+    v |= byte_ptr[1] << 8;
+    out[0] = v;
+    return true;
+}
+bool mem_read_uint16be(mem_t block, size_t len, size_t offset, uint16_t* out) {
+    uint8_t *byte_ptr; uint16_t v = 0;
+    if(offset + 2 > len || out == NULL) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    v |= byte_ptr[0] << 8;
+    v |= byte_ptr[1];
+    out[0] = v;
+    return true;
+}
+bool mem_read_uint32le(mem_t block, size_t len, size_t offset, uint32_t* out) {
+    uint8_t *byte_ptr; uint32_t v = 0;
+    if(offset + 4 > len || out == NULL) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    v |= byte_ptr[0];
+    v |= byte_ptr[1] << 8;
+    v |= byte_ptr[2] << 16;
+    v |= byte_ptr[3] << 24;
+    out[0] = v;
+    return true;
+}
+bool mem_read_uint32be(mem_t block, size_t len, size_t offset, uint32_t* out) {
+    uint8_t *byte_ptr; uint32_t v = 0;
+    if(offset + 4 > len || out == NULL) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    v |= byte_ptr[0] << 24;
+    v |= byte_ptr[1] << 16;
+    v |= byte_ptr[2] << 8;
+    v |= byte_ptr[3];
+    out[0] = v;
+    return true;
+}
+bool mem_read_uint64le(mem_t block, size_t len, size_t offset, uint64_t* out) {
+    uint8_t *byte_ptr; uint64_t v = 0;
+    if(offset + 8 > len || out == NULL) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    v |= byte_ptr[0];
+    v |= byte_ptr[1] << 8;
+    v |= byte_ptr[2] << 16;
+    v |= byte_ptr[3] << 24;
+    v |= byte_ptr[4] << 32;
+    v |= byte_ptr[5] << 40;
+    v |= byte_ptr[6] << 48;
+    v |= byte_ptr[7] << 56;
+    out[0] = v;
+    return true;
+}
+bool mem_read_uint64be(mem_t block, size_t len, size_t offset, uint64_t* out) {
+    uint8_t *byte_ptr; uint64_t v = 0;
+    if(offset + 8 > len || out == NULL) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    v |= byte_ptr[0] << 56;
+    v |= byte_ptr[1] << 48;
+    v |= byte_ptr[2] << 40;
+    v |= byte_ptr[3] << 32;
+    v |= byte_ptr[4] << 24;
+    v |= byte_ptr[5] << 16;
+    v |= byte_ptr[6] << 8;
+    v |= byte_ptr[7];
+    out[0] = v;
+    return true;
+}
+bool mem_read_int16le(mem_t block, size_t len, size_t offset, int16_t* out) {
+    return mem_read_uint16le(block, len, offset, (uint16_t*) out);
+}
+bool mem_read_int16be(mem_t block, size_t len, size_t offset, int16_t* out) {
+    return mem_read_uint16be(block, len, offset, (uint16_t*) out);
+}
+bool mem_read_int32le(mem_t block, size_t len, size_t offset, int32_t* out) {
+    return mem_read_uint32le(block, len, offset, (uint32_t*) out);
+}
+bool mem_read_int32be(mem_t block, size_t len, size_t offset, int32_t* out) {
+    return mem_read_uint32be(block, len, offset, (uint32_t*) out);
+}
+bool mem_read_int64le(mem_t block, size_t len, size_t offset, int64_t* out) {
+    return mem_read_uint64le(block, len, offset, (uint64_t*) out);
+}
+bool mem_read_int64be(mem_t block, size_t len, size_t offset, int64_t* out) {
+    return mem_read_uint64be(block, len, offset, (uint64_t*) out);
+}
+bool mem_read_float32le(mem_t block, size_t len, size_t offset, float32_t* out) {
+    return mem_read_uint32le(block, len, offset, (uint32_t*) out);
+}
+bool mem_read_float32be(mem_t block, size_t len, size_t offset, float32_t* out) {
+    return mem_read_uint32be(block, len, offset, (uint32_t*) out);
+}
+bool mem_read_float64le(mem_t block, size_t len, size_t offset, float64_t* out) {
+    return mem_read_uint64le(block, len, offset, (uint64_t*) out);
+}
+bool mem_read_float64be(mem_t block, size_t len, size_t offset, float64_t* out) {
+    return mem_read_uint64be(block, len, offset, (uint64_t*) out);
+}
+bool mem_write_uint16le(mem_t block, size_t len, size_t offset, uint16_t val) {
+    uint8_t *byte_ptr;
+    if(offset + 2 > len) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    byte_ptr[0] = val & 0xFF;
+    byte_ptr[1] = (val >> 8) & 0xFF;
+    return true;
+}
+bool mem_write_uint16be(mem_t block, size_t len, size_t offset, uint16_t val) {
+    uint8_t *byte_ptr;
+    if(offset + 2 > len) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    byte_ptr[0] = (val >> 8) & 0xFF;
+    byte_ptr[1] = val & 0xFF;
+    return true;
+}
+bool mem_write_uint32le(mem_t block, size_t len, size_t offset, uint32_t val) {
+    uint8_t *byte_ptr;
+    if(offset + 4 > len) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    byte_ptr[0] = val & 0xFF;
+    byte_ptr[1] = (val >> 8) & 0xFF;
+    byte_ptr[2] = (val >> 16) & 0xFF;
+    byte_ptr[3] = (val >> 24) & 0xFF;
+    return true;
+}
+bool mem_write_uint32be(mem_t block, size_t len, size_t offset, uint32_t val) {
+    uint8_t *byte_ptr;
+    if(offset + 4 > len) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    byte_ptr[0] = (val >> 24) & 0xFF;
+    byte_ptr[1] = (val >> 16) & 0xFF;
+    byte_ptr[2] = (val >> 8) & 0xFF;
+    byte_ptr[3] = val & 0xFF;
+    return true;
+}
+bool mem_write_uint64le(mem_t block, size_t len, size_t offset, uint64_t val) {
+    uint8_t *byte_ptr;
+    if(offset + 8 > len) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    byte_ptr[0] = val & 0xFF;
+    byte_ptr[1] = (val >> 8) & 0xFF;
+    byte_ptr[2] = (val >> 16) & 0xFF;
+    byte_ptr[3] = (val >> 24) & 0xFF;
+    byte_ptr[4] = (val >> 32) & 0xFF;
+    byte_ptr[5] = (val >> 40) & 0xFF;
+    byte_ptr[6] = (val >> 48) & 0xFF;
+    byte_ptr[7] = (val >> 56) & 0xFF;
+    return true;
+}
+bool mem_write_uint64be(mem_t block, size_t len, size_t offset, uint64_t val) {
+    uint8_t *byte_ptr;
+    if(offset + 8 > len) return false;
+    byte_ptr = &((uint8_t*)block)[offset];
+    byte_ptr[0] = (val >> 56) & 0xFF;
+    byte_ptr[1] = (val >> 48) & 0xFF;
+    byte_ptr[2] = (val >> 40) & 0xFF;
+    byte_ptr[3] = (val >> 32) & 0xFF;
+    byte_ptr[4] = (val >> 24) & 0xFF;
+    byte_ptr[5] = (val >> 16) & 0xFF;
+    byte_ptr[6] = (val >> 8) & 0xFF;
+    byte_ptr[7] = val & 0xFF;
+    return true;
+}
+bool mem_write_int16le(mem_t block, size_t len, size_t offset, int16_t val) {
+    return mem_write_uint16le(block, len, offset, ((uint16_t*)&val)[0]);
+}
+bool mem_write_int16be(mem_t block, size_t len, size_t offset, int16_t val) {
+    return mem_write_uint16be(block, len, offset, ((uint16_t*)&val)[0]);
+}
+bool mem_write_int32le(mem_t block, size_t len, size_t offset, int32_t val) {
+    return mem_write_uint32le(block, len, offset, ((uint32_t*)&val)[0]);
+}
+bool mem_write_int32be(mem_t block, size_t len, size_t offset, int32_t val) {
+    return mem_write_uint32be(block, len, offset, ((uint32_t*)&val)[0]);
+}
+bool mem_write_int64le(mem_t block, size_t len, size_t offset, int64_t val) {
+    return mem_write_uint64le(block, len, offset, ((uint64_t*)&val)[0]);
+}
+bool mem_write_int64be(mem_t block, size_t len, size_t offset, int64_t val) {
+    return mem_write_uint64be(block, len, offset, ((uint64_t*)&val)[0]);
+}
+bool mem_write_float32le(mem_t block, size_t len, size_t offset, float32_t val) {
+    return mem_write_uint32le(block, len, offset, ((uint32_t*)&val)[0]);
+}
+bool mem_write_float32be(mem_t block, size_t len, size_t offset, float32_t val) {
+    return mem_write_uint32be(block, len, offset, ((uint32_t*)&val)[0]);
+}
+bool mem_write_float64le(mem_t block, size_t len, size_t offset, float64_t val) {
+    return mem_write_uint64le(block, len, offset, ((uint64_t*)&val)[0]);
+}
+bool mem_write_float64be(mem_t block, size_t len, size_t offset, float64_t val) {
+    return mem_write_uint64be(block, len, offset, ((uint64_t*)&val)[0]);
+}
 
 
 
 
 /* String library */
-
 strid_t strid(const char* str) {
     if(str == NULL) return STRID_INVALID;
     return strid_from_len(str, strlen(str));
@@ -364,13 +558,6 @@ size_t strid_len(strid_t id) {
     if(id == STRID_INVALID) return (size_t)-1;
     return (size_t)id[-1];
 }
-
-
-
-
-
-
-
 
     // str needs to have been _allocated_ by the standard allocator (like strids), otherwise use strbuf_alloc+strbuf_concat
 strbuf_result_t strbuf_from_str(strbuf_t* b, char* str) {
@@ -875,8 +1062,8 @@ strbuf_result_t strbuf_concat_ptr(strbuf_t* buf, void* ptr) {
 // None of these functions change buf, they return 0 if nothing was to parse / if offset was out of range, and will then not write anything to the out pointers.
 size_t strbuf_read_whitespace(strbuf_t buf, size_t offset, size_t width) {
     int len = 0;
-    if(buf.str == NULL || offset >= buf.cap) return 0;
-    while((len < width || width == 0) && offset+len < buf.cap && isspace(buf.str[offset+len])) {
+    if(buf.str == NULL || offset >= buf.len) return 0;
+    while((len < width || width == 0) && offset+len < buf.len && isspace(buf.str[offset+len])) {
         len++;
     }
     return len;
@@ -884,7 +1071,7 @@ size_t strbuf_read_whitespace(strbuf_t buf, size_t offset, size_t width) {
 size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expected_const) {
     if(expected_const == STRID_INVALID) return 0;
     size_t len = strid_len(expected_const);
-    if(buf.str == NULL || offset + len >= buf.cap) return 0;
+    if(buf.str == NULL || offset + len >= buf.len) return 0;
     for(int i = 0; i < len; i++) {
         if(buf.str[offset+i] != expected_const[i])
             return 0;
@@ -893,11 +1080,11 @@ size_t strbuf_read_const(strbuf_t buf, size_t offset, size_t width, strid_t expe
 }
 size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t allowed_chars_first, strid_t allowed_chars, strid_t* out_id) {
     int len = 0;
-    if(buf.str == NULL || offset >= buf.cap || allowed_chars_first == STRID_INVALID || allowed_chars == STRID_INVALID || out_id == NULL) return 0;
-    for(int i = offset; i < buf.cap; i++) {
+    if(buf.str == NULL || offset >= buf.len || allowed_chars_first == STRID_INVALID || allowed_chars == STRID_INVALID || out_id == NULL) return 0;
+    for(int i = offset; i < buf.len; i++) {
         if(strid_subindex_char(allowed_chars_first, buf.str[i]) >= 0) {
             len = 1;
-            for(int j = 0; i+j<buf.cap && j < width; j++) {
+            for(int j = 0; i+j<buf.len && j < width; j++) {
                 if(strid_subindex_char(allowed_chars, buf.str[i]) < 0) {
                     out_id[0] = strid_from_len(&buf.str[i-len+1], len);
                     return len;
@@ -913,11 +1100,11 @@ size_t strbuf_read_identifier(strbuf_t buf, size_t offset, size_t width, strid_t
     // inverse bc it excludes instead
 size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width, strid_t not_allowed_chars_first, strid_t not_allowed_chars, strid_t* out_id) {
     int len = 0;
-    if(buf.str == NULL || offset >= buf.cap || not_allowed_chars_first == STRID_INVALID || not_allowed_chars == STRID_INVALID) return 0;
-    for(int i = offset; i < buf.cap; i++) {
+    if(buf.str == NULL || offset >= buf.len || not_allowed_chars_first == STRID_INVALID || not_allowed_chars == STRID_INVALID) return 0;
+    for(int i = offset; i < buf.len; i++) {
         if(strid_subindex_char(not_allowed_chars_first, buf.str[i]) < 0) {
             len = 1;
-            for(int j = 0; i+j<buf.cap && j < width; j++) {
+            for(int j = 0; i+j<buf.len && j < width; j++) {
                 if(strid_subindex_char(not_allowed_chars, buf.str[i]) >= 0) {
                     out_id[0] = strid_from_len(&buf.str[i-len+1], len);
                     return len;
@@ -933,7 +1120,7 @@ size_t strbuf_read_identifier_inverse(strbuf_t buf, size_t offset, size_t width,
 
 static size_t strbuf_read_generic_nr_literal(strbuf_t buf, size_t offset, size_t width, void* out, char* modifier) {
     int len, nr; strbuf_t fmt; strbuf_result_t r;
-    if(buf.str == NULL || offset >= buf.cap || out == NULL) return 0;
+    if(buf.str == NULL || offset >= buf.len || out == NULL) return 0;
     r = strbuf_alloc(&fmt, 20);
     if(r != STRBUF_OK) return 0;
     r = strbuf_concat(&fmt, "%");
@@ -951,36 +1138,115 @@ static size_t strbuf_read_generic_nr_literal(strbuf_t buf, size_t offset, size_t
     else return len;
 }
 size_t strbuf_read_decimal_int_literal(strbuf_t buf, size_t offset, size_t width, int64_t* out) {
-    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNi64);
+    return strbuf_read_generic_nr_literal(buf, offset, width, out, SCNi64);
 }
 size_t strbuf_read_decimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out) {
-    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNu64);
+    return strbuf_read_generic_nr_literal(buf, offset, width, out, SCNu64);
 }
 size_t strbuf_read_octal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out) {
-    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNo64);
+    return strbuf_read_generic_nr_literal(buf, offset, width, out, SCNo64);
 }
 size_t strbuf_read_hexadecimal_uint_literal(strbuf_t buf, size_t offset, size_t width, uint64_t* out) {
-    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNx64);
+    return strbuf_read_generic_nr_literal(buf, offset, width, out, SCNx64);
 }
 size_t strbuf_read_float_literal(strbuf_t buf, size_t offset, size_t width, float64_t* out) {
-    return strbuf_read_generic_nr_literal(buf, oddset, width, out, SCNf64);
+    return strbuf_read_generic_nr_literal(buf, offset, width, out, SCNf64);
 }
 size_t strbuf_read_char(strbuf_t buf, size_t offset, size_t width, char* out) {
-    return strbuf_read_generic_nr_literal(buf, oddset, width, out, "c");
+    return strbuf_read_generic_nr_literal(buf, offset, width, out, "c");
 }
 size_t strbuf_read_ptr(strbuf_t buf, size_t offset, size_t width, void** out) {
-    return strbuf_read_generic_nr_literal(buf, oddset, width, out, "p");
+    return strbuf_read_generic_nr_literal(buf, offset, width, out, "p");
 }
 
 
 
 
+#if (UTF8PROC_VERSION_MAJOR != 2) || (UTF8PROC_VERSION_MINOR < 11)
+#error Wrong utf8proc version linked!
+#endif
+
+
+unicode_result_t unicode_get_character_properties(uint32_t codepoint, unicode_properties_t* out_properties) {
+    const utf8proc_property_t* props; unicode_properties_t ret;
+    if(out_properties == NULL) return UNICODE_ERROR_INVALID_PARAM;
+    if(!utf8proc_codepoint_valid(codepoint)) return UNICODE_ERROR_INVALID_UTF8;
+    props = utf8proc_get_property(codepoint);
+    ret.category = (unicode_category_t) props[0].category;
+    ret.bidi_class = (unicode_bidirectional_character_class_t) props[0].bidi_class;
+    ret.decomp_type = (unicode_decomposition_type_t) props[0].decomp_type;
+    ret.boundclass = (unicode_boundclass_t) props[0].boundclass;
+    ret.indic_conjunct_break = (unicode_indic_conjunct_break_t) props[0].indic_conjunct_break;
+    ret.bidi_mirrored = props[0].bidi_mirrored;
+    ret.comp_exclusion = props[0].comp_exclusion;
+    ret.control_boundary = props[0].control_boundary;
+    ret.ambiguous_width = props[0].ambiguous_width;
+    ret.ignorable = props[0].ignorable;
+    ret.charwidth = props[0].charwidth;
+    ret.islower = utf8proc_islower(codepoint);
+    ret.isupper = utf8proc_isupper(codepoint);
+    ret.corresponding_lower = utf8proc_tolower(codepoint);
+    ret.corresponding_upper = utf8proc_toupper(codepoint);
+    ret.corresponding_title = utf8proc_totitle(codepoint);
+    
+    out_properties[0] = ret;
+    return UNICODE_OK;
+}
+
+/* returns 0 for invalid codepoint and byte-size of codepoint otherwise */
+size_t unicode_strbuf_read_codepoint(strbuf_t buf, size_t offset, unicode_encoding_t encoding, uint32_t* out) {
+    if(buf.str == NULL || offset >= buf.len || out == NULL) return 0;
+    switch(encoding) {
+    case CHAR_ENCODING_UTF8:
+    case CHAR_ENCODING_UTF16LE:
+    case CHAR_ENCODING_UTF16BE:
+    case CHAR_ENCODING_UTF32LE:
+    case CHAR_ENCODING_UTF32BE:
+    case CHAR_ENCODING_UTF16:
+    case CHAR_ENCODING_UTF32:
+        if(buf.len - offset < 4) return 0;
+        uint32_t codepoint = ((uint32_t*) (&(buf.str[offset])))[0];
+        if(codepoint > 0x10ffff) return 0;
+        else {
+            out[0] = codepoint;
+            return 4;
+        }
+    default:
+        return 0;
+    }
+}
+unicode_result_t unicode_strbuf_transform_encoding(strbuf_t* new_buf, strbuf_t buf, char_encoding_t old_encoding, char_encoding_t new_encoding);
+
+unicode_result_t unicode_get_next_char
 
 
 
+utf8proc_utf8class
 
 
+utf8proc_iterate
 
+utf8proc_encode_char
+
+utf8proc_decompose_char
+
+utf8proc_decompose_custom
+    utf8proc_decompose
+    
+utf8proc_normalize_utf32
+
+utf8proc_reencode
+
+utf8proc_grapheme_break_stateful
+    utf8proc_grapheme_break
+
+utf8proc_map_custom
+    utf8proc_map
+        utf8proc_NFD
+        utf8proc_NFC
+        utf8proc_NFKD
+        utf8proc_NFKC
+        utf8proc_NFKC_Casefold
 
 
 
