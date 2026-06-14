@@ -1,5 +1,11 @@
 #include "snd.h"
 
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+#include <limits.h>
+#include <stdio.h>
+
 #define AL_NO_PROTOTYPES
 #define ALC_NO_PROTOTYPES
 #include <AL/al.h>
@@ -18,8 +24,8 @@
 
 
 
-TODO: check all alGetError vs alcGetError!
-TODO: add constraints for the getters/setters according to property info in spec! (no NaN etc.)
+//TODO: check all alGetError vs alcGetError!
+//TODO: add constraints for the getters/setters according to property info in spec! (no NaN etc.)
 
 
 
@@ -202,6 +208,7 @@ static snd_result_t split_device_string(const char* str, int* out_num_strings, c
     }
     str_array = calloc(num, sizeof(char*));
     /* Second scan to copy the strings out: */
+    last_nul = -1;
     for(int i = 0;; i++) {
         if(str[i] == '\0') {
             if(last_nul == i-1) {
@@ -220,7 +227,7 @@ static snd_result_t split_device_string(const char* str, int* out_num_strings, c
     }
 #endif
     out_num_strings[0] = num;
-    out_strings[0] = str_arrays;
+    out_strings[0] = (const char**) str_array;
     return SND_OK;
 }
 
@@ -239,9 +246,9 @@ snd_result_t snd_init(snd_device_list_t* out_device_list) {
     }
     snd_load_al(loader);
     
-    str = alcGetString(NULL, ALC_DEVICE_SPECIFIER);
+    str = g_al.c.GetString(NULL, ALC_DEVICE_SPECIFIER);
 #ifndef SND_NO_CHECKS
-    if(g_al.GetError() != AL_NO_ERROR) {
+    if(g_al.c.GetError(NULL) != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
     if(str == NULL) {
@@ -255,9 +262,9 @@ snd_result_t snd_init(snd_device_list_t* out_device_list) {
     }
 #endif
     
-    str = alcGetString(NULL, ALC_DEFAULT_DEVICE_SPECIFIER);
+    str = g_al.c.GetString(NULL, ALC_DEFAULT_DEVICE_SPECIFIER);
 #ifndef SND_NO_CHECKS
-    if(g_al.GetError() != AL_NO_ERROR) {
+    if(g_al.c.GetError(NULL) != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
     if(str == NULL) {
@@ -277,9 +284,9 @@ snd_result_t snd_init(snd_device_list_t* out_device_list) {
     }
 #endif
 
-    str = alcGetString(NULL, ALC_CAPTURE_DEVICE_SPECIFIER);
+    str = g_al.c.GetString(NULL, ALC_CAPTURE_DEVICE_SPECIFIER);
 #ifndef SND_NO_CHECKS
-    if(g_al.GetError() != AL_NO_ERROR) {
+    if(g_al.c.GetError(NULL) != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
     if(str == NULL) {
@@ -293,9 +300,9 @@ snd_result_t snd_init(snd_device_list_t* out_device_list) {
     }
 #endif
     
-    str = alcGetString(NULL, ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER);
+    str = g_al.c.GetString(NULL, ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER);
 #ifndef SND_NO_CHECKS
-    if(g_al.GetError() != AL_NO_ERROR) {
+    if(g_al.c.GetError(NULL) != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
     if(str == NULL) {
@@ -324,7 +331,7 @@ snd_result_t snd_init(snd_device_list_t* out_device_list) {
 snd_result_t snd_exit(void) {
     snd_unload_al_dll();
     
-    for(int i = 0; i < g_al.devices.nr_playback_devices) {
+    for(int i = 0; i < g_al.devices.nr_playback_devices; i++) {
         if(g_al.playback_device_handles[i] != NULL) {
             g_al.c.CloseDevice(g_al.playback_device_handles[i]);
 #ifndef SND_NO_CHECKS
@@ -353,10 +360,10 @@ snd_result_t snd_recording_device_open(uint32_t recording_device_id, snd_format_
 #endif
     switch(format) {
     case SND_FORMAT_PCM_UINT8_MONO:
-        al_format = AL_FORMAT_MOMO8;
+        al_format = AL_FORMAT_MONO8;
         break;
     case SND_FORMAT_PCM_INT16_MONO:
-        al_format = AL_FORMAT_MOMO16;
+        al_format = AL_FORMAT_MONO16;
         break;
     case SND_FORMAT_PCM_UINT8_STEREO_INTERLEAVED_LR:
         al_format = AL_FORMAT_STEREO8;
@@ -384,7 +391,7 @@ snd_result_t snd_recording_device_open(uint32_t recording_device_id, snd_format_
     }
 #endif
 #ifdef SND_DEBUG
-    str = alcGetString(handle, ALC_CAPTURE_DEVICE_SPECIFIER);
+    str = g_al.c.GetString(handle, ALC_CAPTURE_DEVICE_SPECIFIER);
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
@@ -457,6 +464,23 @@ snd_result_t snd_recording_retrieve_samples_nonblocking(snd_recording_device_t d
 #endif
     return SND_OK;
 }
+snd_result_t snd_recording_get_nr_samples(snd_recording_device_t device, size_t* nr_samples) {
+    ALCint i;
+#ifndef SND_NO_CHECKS
+    if(device.handle == NULL || nr_samples == NULL) {
+        return SND_ERROR_INVALID_PARAM;
+    }
+#endif
+    g_al.c.GetIntegerv((ALCdevice*)device.handle, ALC_CAPTURE_SAMPLES, 1, &i);
+#ifndef SND_NO_CHECKS
+    if(g_al.GetError() != AL_NO_ERROR) {
+        return SND_ERROR_UNKNOWN;
+    }
+#endif
+    nr_samples[0] = i;
+    return SND_OK;
+}
+
 
 static snd_result_t snd_context_set(ALCcontext* new, ALCcontext** old) {
     ALCcontext* old_con; ALCboolean b;
@@ -499,7 +523,7 @@ static snd_result_t snd_context_set(ALCcontext* new, ALCcontext** old) {
 
 snd_result_t snd_listener_context_create(uint32_t playback_device_id, uint32_t mixing_frequency_Hz, uint32_t refresh_interval_Hz, bool synchronous, uint32_t requested_min_nr_mono_sources, uint32_t requested_min_nr_stereo_sources, snd_listener_context_t* context) {
     const ALCchar* str; ALCint attrlist[11]; ALCboolean b; ALCint iv[11];
-    ALCcontext* handle, old_con; ALCdevice* dev;
+    ALCcontext* handle; ALCcontext* old_con; ALCdevice* dev;
     
 #ifndef SND_NO_CHECKS
     if(context == NULL || playback_device_id < 0 || playback_device_id >= g_al.devices.nr_playback_devices) {
@@ -512,18 +536,18 @@ snd_result_t snd_listener_context_create(uint32_t playback_device_id, uint32_t m
 #endif
 
     if(g_al.playback_device_handles[playback_device_id] == NULL) {
-        g_al.playback_device_handles[playback_device_id] = g_al.c.OpenDevice(g_al.devices.playback_devices[i]);
+        g_al.playback_device_handles[playback_device_id] = g_al.c.OpenDevice(g_al.devices.playback_devices[playback_device_id]);
 #ifndef SND_NO_CHECKS
         if(g_al.GetError() != AL_NO_ERROR) {
             return SND_ERROR_UNKNOWN;
         }
 #endif
 #ifdef SND_DEBUG
-        str = alcGetString(g_al.playback_device_handles[playback_device_id], ALC_DEVICE_SPECIFIER);
+        str = g_al.c.GetString(g_al.playback_device_handles[playback_device_id], ALC_DEVICE_SPECIFIER);
         if(g_al.GetError() != AL_NO_ERROR) {
             return SND_ERROR_UNKNOWN;
         }
-        if(str == NULL || strcmp(str, g_al.devices.playback_devices[i]) != 0) {
+        if(str == NULL || strcmp(str, g_al.devices.playback_devices[playback_device_id]) != 0) {
             return SND_ERROR_UNKNOWN;
         }
 #endif
@@ -602,7 +626,7 @@ snd_result_t snd_listener_context_create(uint32_t playback_device_id, uint32_t m
 #endif
     
     context[0].handle = handle;
-    return GFX_OK;
+    return SND_OK;
 }
 snd_result_t snd_listener_context_params_get(snd_listener_context_t context, snd_listener_context_params_t* out_params) {
     snd_result_t r; ALCcontext* old_con; snd_listener_context_params_t params;
@@ -826,7 +850,7 @@ snd_result_t snd_listener_context_params_set(snd_listener_context_t context, con
     r = snd_listener_context_params_get(context, &test_params);
     if(r != SND_OK) { return r; }
 
-    if(test_params != params) {
+    if(memcmp(&test_params, &params, sizeof(snd_listener_context_params_t)) != 0) {
         return SND_ERROR_UNKNOWN;
     }
 #endif
@@ -835,14 +859,17 @@ snd_result_t snd_listener_context_params_set(snd_listener_context_t context, con
 }
 snd_result_t snd_listener_context_process(snd_listener_context_t context) {
 #ifndef SND_NO_CHECKS
+    ALCdevice* dev;
     if(context.handle == NULL) {
         return SND_ERROR_INVALID_PARAM;
     }
+    
+    dev = g_al.c.GetContextsDevice(context.handle);
 #endif
 
     g_al.c.ProcessContext(context.handle);
 #ifndef SND_NO_CHECKS
-    if(g_al.c.GetError() != AL_NO_ERROR) {
+    if(g_al.c.GetError(dev) != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
 #endif
@@ -851,14 +878,17 @@ snd_result_t snd_listener_context_process(snd_listener_context_t context) {
 }
 snd_result_t snd_listener_context_suspend(snd_listener_context_t context) {
 #ifndef SND_NO_CHECKS
+    ALCdevice* dev;
     if(context.handle == NULL) {
         return SND_ERROR_INVALID_PARAM;
     }
+    
+    dev = g_al.c.GetContextsDevice(context.handle);
 #endif
 
     g_al.c.SuspendContext(context.handle);
 #ifndef SND_NO_CHECKS
-    if(g_al.c.GetError() != AL_NO_ERROR) {
+    if(g_al.c.GetError(dev) != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
 #endif
@@ -868,15 +898,18 @@ snd_result_t snd_listener_context_suspend(snd_listener_context_t context) {
 snd_result_t snd_listener_context_destroy(snd_listener_context_t context) {
     ALCboolean b;
 #ifndef SND_NO_CHECKS
+    ALCdevice* dev;
     if(context.handle == NULL) {
         return SND_ERROR_INVALID_PARAM;
     }
+    
+    dev = g_al.c.GetContextsDevice(context.handle);
 #endif
 
     if(g_al.c.GetCurrentContext() == context.handle) {
         b = g_al.c.MakeContextCurrent(NULL);
 #ifndef SND_NO_CHECKS
-        if(g_al.GetError() != AL_NO_ERROR) {
+        if(g_al.c.GetError(dev) != AL_NO_ERROR) {
             return SND_ERROR_UNKNOWN;
         }
         if(b != AL_TRUE) {
@@ -887,7 +920,7 @@ snd_result_t snd_listener_context_destroy(snd_listener_context_t context) {
 
     g_al.c.DestroyContext(context.handle);
 #ifndef SND_NO_CHECKS
-    if(g_al.c.GetError() != AL_NO_ERROR) {
+    if(g_al.c.GetError(dev) != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
 #endif
@@ -908,11 +941,11 @@ snd_result_t snd_buffer_alloc(snd_listener_context_t context, snd_format_t forma
 #endif
     switch(format) {
     case SND_FORMAT_PCM_UINT8_MONO:
-        al_format = AL_FORMAT_MOMO8;
+        al_format = AL_FORMAT_MONO8;
         bits = 8; channels = 1;
         break;
     case SND_FORMAT_PCM_INT16_MONO:
-        al_format = AL_FORMAT_MOMO16;
+        al_format = AL_FORMAT_MONO16;
         if(size%2 != 0) {
             return SND_ERROR_INVALID_PARAM;
         }
@@ -941,7 +974,7 @@ snd_result_t snd_buffer_alloc(snd_listener_context_t context, snd_format_t forma
     if(r != SND_OK) { return r; }
 #endif
 
-    g_al.GenBuffers(&id);
+    g_al.GenBuffers(1, &id);
 #ifndef SND_NO_CHECKS
     switch(g_al.GetError()) {
     case AL_NO_ERROR:
@@ -969,19 +1002,19 @@ snd_result_t snd_buffer_alloc(snd_listener_context_t context, snd_format_t forma
 #endif
 
 #ifdef SND_DEBUG
-    g_al.GetBufferi(id, AL_FREQUENCY, &i)
+    g_al.GetBufferi(id, AL_FREQUENCY, &i);
     if(i != frequency_hz) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.GetBufferi(id, AL_BITS, &i)
+    g_al.GetBufferi(id, AL_BITS, &i);
     if(i != bits) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.GetBufferi(id, AL_CHANNELS, &i)
+    g_al.GetBufferi(id, AL_CHANNELS, &i);
     if(i != channels) {
         return SND_ERROR_UNKNOWN;
     }
-    g_al.GetBufferi(id, AL_SIZE, &i)
+    g_al.GetBufferi(id, AL_SIZE, &i);
     if(i != size) {
         return SND_ERROR_UNKNOWN;
     }
@@ -1061,7 +1094,7 @@ snd_result_t snd_source_create(snd_listener_context_t context, snd_source_t* sou
     default:
         return SND_ERROR_UNKNOWN;
     }
-    if(g_al.IsSource(source.id) != AL_TRUE) {
+    if(g_al.IsSource(id) != AL_TRUE) {
         return SND_ERROR_UNKNOWN;
     }
 #endif
@@ -1109,7 +1142,7 @@ snd_result_t snd_source_delete(snd_listener_context_t context, snd_source_t sour
 
     return SND_OK;
 }
-snd_result_t snd_source_params_get(snd_listener_context_t context, snd_source_t source, const snd_source_params_t* out_params) {
+snd_result_t snd_source_params_get(snd_listener_context_t context, snd_source_t source, snd_source_params_t* out_params) {
     snd_result_t r; ALCcontext* old_con; snd_source_params_t params;
     ALint i; ALfloat fv[3];
     
@@ -1420,7 +1453,7 @@ snd_result_t snd_source_params_set(snd_listener_context_t context, snd_source_t 
     r = snd_source_params_get(context, source, &test_params);
     if(r != SND_OK) { return r; }
 
-    if(test_params != params) {
+    if(memcmp(&test_params,&params,sizeof(snd_source_params_t)) != 0) {
         return SND_ERROR_UNKNOWN;
     }
 #endif
@@ -1610,7 +1643,7 @@ snd_result_t snd_source_static_buffer(snd_listener_context_t context, snd_source
     }
 #endif
 
-    g_al.Sourcei(source.id, AL_BUFFER, &id);
+    g_al.Sourcei(source.id, AL_BUFFER, id);
 #ifndef SND_NO_CHECKS
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
@@ -1644,7 +1677,7 @@ snd_result_t snd_source_static_buffer(snd_listener_context_t context, snd_source
     return SND_OK;
 }
 snd_result_t snd_source_queue_buffers(snd_listener_context_t context, snd_source_t source, uint32_t nr_buffers, snd_buffer_t* buffers) {
-    snd_result_t r; ALCcontext* old_con;
+    snd_result_t r; ALCcontext* old_con; ALint i;
     
 #ifndef SND_NO_CHECKS
     if(context.handle == NULL || nr_buffers <= 0 || buffers == NULL) {
@@ -1700,7 +1733,7 @@ snd_result_t snd_source_queue_buffers(snd_listener_context_t context, snd_source
     return SND_OK;
 }
 snd_result_t snd_source_unqueue_buffers(snd_listener_context_t context, snd_source_t source, uint32_t nr_buffers, snd_buffer_t* out_buffers) {
-    snd_result_t r; ALCcontext* old_con;
+    snd_result_t r; ALCcontext* old_con; ALint i;
     
 #ifndef SND_NO_CHECKS
     if(context.handle == NULL || nr_buffers <= 0 || out_buffers == NULL) {
@@ -1761,7 +1794,7 @@ snd_result_t snd_source_unqueue_buffers(snd_listener_context_t context, snd_sour
     return SND_OK;
 }
 snd_result_t snd_source_reset_buffer_state(snd_listener_context_t context, snd_source_t source) {
-    snd_result_t r; ALCcontext* old_con;
+    snd_result_t r; ALCcontext* old_con; ALint i;
     
 #ifndef SND_NO_CHECKS
     if(context.handle == NULL) {
@@ -1780,7 +1813,7 @@ snd_result_t snd_source_reset_buffer_state(snd_listener_context_t context, snd_s
     }
 #endif
 
-    g_al.Sourcei(source.id, AL_BUFFER, NULL);
+    g_al.Sourcei(source.id, AL_BUFFER, 0);
 #ifndef SND_NO_CHECKS
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
@@ -1828,19 +1861,21 @@ snd_result_t snd_sources_play  (snd_listener_context_t context, uint32_t nr_sour
 
     /* Since the only field of snd_source_t is the id, the arrays will line up.
      * NOTE: if anything is added to the snd_source_t struct, rewrite this! */
-    g_al.SourcePlayv(nr_sources, sources);
+    g_al.SourcePlayv(nr_sources, (const ALuint *) sources);
 #ifndef SND_NO_CHECKS
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
 #endif
 #ifdef SND_DEBUG
-    g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
-    if(g_al.GetError() != AL_NO_ERROR) {
-        return SND_ERROR_UNKNOWN;
-    }
-    if(i != AL_PLAYING) {
-        return SND_ERROR_UNKNOWN;
+    for(int k = 0; k < nr_sources; k++) {
+        g_al.GetSourcei(sources[k].id, AL_SOURCE_STATE, &i);
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+        if(i != AL_PLAYING) {
+            return SND_ERROR_UNKNOWN;
+        }
     }
 #endif
 
@@ -1853,6 +1888,9 @@ snd_result_t snd_sources_play  (snd_listener_context_t context, uint32_t nr_sour
 }
 snd_result_t snd_sources_pause (snd_listener_context_t context, uint32_t nr_sources, snd_source_t* sources) {
     snd_result_t r; ALCcontext* old_con;
+#ifdef SND_DEBUG
+    ALint* source_states = calloc(sizeof(ALint), nr_sources);
+#endif
     
 #ifndef SND_NO_CHECKS
     if(context.handle == NULL || sources == NULL || nr_sources <= 0) {
@@ -1870,19 +1908,19 @@ snd_result_t snd_sources_pause (snd_listener_context_t context, uint32_t nr_sour
         if(g_al.IsSource(sources[i].id) != AL_TRUE) {
             return SND_ERROR_INVALID_PARAM;
         }
+#ifdef SND_DEBUG
+        g_al.GetSourcei(sources[i].id, AL_SOURCE_STATE, &source_states[i]);
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+#endif
     }
 #endif
 
-#ifdef SND_DEBUG
-    g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
-    if(g_al.GetError() != AL_NO_ERROR) {
-        return SND_ERROR_UNKNOWN;
-    }
-#endif
 
     /* Since the only field of snd_source_t is the id, the arrays will line up.
      * NOTE: if anything is added to the snd_source_t struct, rewrite this! */
-    g_al.SourcePausev(nr_sources, sources);
+    g_al.SourcePausev(nr_sources, (const ALuint*) sources);
 #ifndef SND_NO_CHECKS
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
@@ -1890,13 +1928,15 @@ snd_result_t snd_sources_pause (snd_listener_context_t context, uint32_t nr_sour
 #endif
 #ifdef SND_DEBUG
     /* Only for AL_PLAYING sources does the spec guarentee state change */
-    if(i == AL_PLAYING) {
-        g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
-        if(g_al.GetError() != AL_NO_ERROR) {
-            return SND_ERROR_UNKNOWN;
-        }
-        if(i != AL_PAUSED) {
-            return SND_ERROR_UNKNOWN;
+    for(int i = 0; i < nr_sources; i++) {
+        if(source_states[i] == AL_PLAYING) {
+            g_al.GetSourcei(sources[i].id, AL_SOURCE_STATE, &source_states[i]);
+            if(g_al.GetError() != AL_NO_ERROR) {
+                return SND_ERROR_UNKNOWN;
+            }
+            if(source_states[i] != AL_PAUSED) {
+                return SND_ERROR_UNKNOWN;
+            }
         }
     }
 #endif
@@ -1910,6 +1950,9 @@ snd_result_t snd_sources_pause (snd_listener_context_t context, uint32_t nr_sour
 }
 snd_result_t snd_sources_stop  (snd_listener_context_t context, uint32_t nr_sources, snd_source_t* sources) {
     snd_result_t r; ALCcontext* old_con;
+#ifdef SND_DEBUG
+    ALint* source_states = calloc(sizeof(ALint), nr_sources);
+#endif
     
 #ifndef SND_NO_CHECKS
     if(context.handle == NULL || sources == NULL || nr_sources <= 0) {
@@ -1927,19 +1970,19 @@ snd_result_t snd_sources_stop  (snd_listener_context_t context, uint32_t nr_sour
         if(g_al.IsSource(sources[i].id) != AL_TRUE) {
             return SND_ERROR_INVALID_PARAM;
         }
+#ifdef SND_DEBUG
+        g_al.GetSourcei(sources[i].id, AL_SOURCE_STATE, &source_states[i]);
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+#endif
     }
 #endif
 
-#ifdef SND_DEBUG
-    g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
-    if(g_al.GetError() != AL_NO_ERROR) {
-        return SND_ERROR_UNKNOWN;
-    }
-#endif
 
     /* Since the only field of snd_source_t is the id, the arrays will line up.
      * NOTE: if anything is added to the snd_source_t struct, rewrite this! */
-    g_al.SourceStopv(nr_sources, sources);
+    g_al.SourceStopv(nr_sources, (const ALuint*) sources);
 #ifndef SND_NO_CHECKS
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
@@ -1947,13 +1990,15 @@ snd_result_t snd_sources_stop  (snd_listener_context_t context, uint32_t nr_sour
 #endif
 #ifdef SND_DEBUG
     /* Only for AL_PLAYING and AL_PAUSED sources does the spec guarentee state change */
-    if(i == AL_PLAYING || i == AL_PAUSED) {
-        g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
-        if(g_al.GetError() != AL_NO_ERROR) {
-            return SND_ERROR_UNKNOWN;
-        }
-        if(i != AL_PAUSED) {
-            return SND_ERROR_UNKNOWN;
+    for(int i = 0; i < nr_sources; i++) {
+        if(source_states[i] == AL_PLAYING || source_states[i] == AL_PAUSED) {
+            g_al.GetSourcei(sources[i].id, AL_SOURCE_STATE, &source_states[i]);
+            if(g_al.GetError() != AL_NO_ERROR) {
+                return SND_ERROR_UNKNOWN;
+            }
+            if(source_states[i] != AL_PAUSED) {
+                return SND_ERROR_UNKNOWN;
+            }
         }
     }
 #endif
@@ -1966,7 +2011,7 @@ snd_result_t snd_sources_stop  (snd_listener_context_t context, uint32_t nr_sour
     return SND_OK;
 }
 snd_result_t snd_sources_rewind(snd_listener_context_t context, uint32_t nr_sources, snd_source_t* sources) {
-    snd_result_t r; ALCcontext* old_con;
+    snd_result_t r; ALCcontext* old_con; ALint i;
     
 #ifndef SND_NO_CHECKS
     if(context.handle == NULL || sources == NULL || nr_sources <= 0) {
@@ -1989,19 +2034,21 @@ snd_result_t snd_sources_rewind(snd_listener_context_t context, uint32_t nr_sour
 
     /* Since the only field of snd_source_t is the id, the arrays will line up.
      * NOTE: if anything is added to the snd_source_t struct, rewrite this! */
-    g_al.SourceRewindv(nr_sources, sources);
+    g_al.SourceRewindv(nr_sources, (const ALuint*) sources);
 #ifndef SND_NO_CHECKS
     if(g_al.GetError() != AL_NO_ERROR) {
         return SND_ERROR_UNKNOWN;
     }
 #endif
 #ifdef SND_DEBUG
-    g_al.GetSourcei(source.id, AL_SOURCE_STATE, &i);
-    if(g_al.GetError() != AL_NO_ERROR) {
-        return SND_ERROR_UNKNOWN;
-    }
-    if(i != AL_INITIAL) {
-        return SND_ERROR_UNKNOWN;
+    for(int k = 0; k < nr_sources; k++) {
+        g_al.GetSourcei(sources[k].id, AL_SOURCE_STATE, &i);
+        if(g_al.GetError() != AL_NO_ERROR) {
+            return SND_ERROR_UNKNOWN;
+        }
+        if(i != AL_INITIAL) {
+            return SND_ERROR_UNKNOWN;
+        }
     }
 #endif
 

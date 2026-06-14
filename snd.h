@@ -2,6 +2,9 @@
  * Sound library abstraction
  * implemented in OpenAL 1.1
  */
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
  
 
 /* This macro turns on extra redundant checking */
@@ -16,7 +19,7 @@
  
 
 typedef struct float32_vec3_t {
-    float32_t x, y, z;
+    float x, y, z;
 } float32_vec3_t;
 
 typedef enum snd_result_t {
@@ -40,7 +43,7 @@ typedef enum snd_format_t {
     SND_FORMAT_PCM_INT16_MONO = 1,
     SND_FORMAT_PCM_UINT8_STEREO_INTERLEAVED_LR = 2,
     SND_FORMAT_PCM_INT16_STEREO_INTERLEAVED_LR = 3,
-    SND_FORMAT_MAX_ENUM = 0x7f
+    SND_FORMAT_MAX_ENUM = 0x7fffffff
 } snd_format_t;
 typedef enum snd_distance_model_type_t {
     SND_DISTANCE_MODEL_TYPE_INVERSE_DISTANCE = 0,
@@ -50,13 +53,13 @@ typedef enum snd_distance_model_type_t {
     SND_DISTANCE_MODEL_TYPE_EXPONENT_DISTANCE = 4,
     SND_DISTANCE_MODEL_TYPE_EXPONENT_DISTANCE_CLAMPED = 5,
     SND_DISTANCE_MODEL_TYPE_NONE = 6,
-    SND_DISTANCE_MODEL_TYPE_MAX_ENUM = 0x7f,
+    SND_DISTANCE_MODEL_TYPE_MAX_ENUM = 0x7fffffff,
 } snd_distance_model_type_t;
 typedef enum snd_source_position_format_t {
     SND_SOURCE_POSITION_FORMAT_SECONDS = 0,
     SND_SOURCE_POSITION_FORMAT_SAMPLES = 1,
     SND_SOURCE_POSITION_FORMAT_BYTES = 2,
-    SND_SOURCE_POSITION_FORMAT_MAX_ENUM = 0x7f
+    SND_SOURCE_POSITION_FORMAT_MAX_ENUM = 0x7fffffff
 } snd_source_position_format_t;
 
 typedef struct snd_device_list_t {
@@ -78,7 +81,7 @@ typedef struct snd_listener_context_params_t {
     float doppler_factor, speed_of_sound, gain_multiplier;
     float32_vec3_t position, velocity;
     struct { float32_vec3_t forward, up; } orientation;
-} snd_listener_context_params_t;
+} snd_listener_context_params_t __attribute__((packed));
 typedef struct snd_buffer_t {
     uint32_t id;
 } snd_buffer_t;
@@ -86,7 +89,6 @@ typedef struct snd_source_t {
     uint32_t id;
 } snd_source_t;
 typedef struct snd_source_params_t {
-    bool position_relative_to_listener, looping;
     struct {
         float multiplier, min, max, outer_angle_secondary_multiplier;
     } gain;
@@ -98,7 +100,8 @@ typedef struct snd_source_params_t {
     } distance;
     float pitch_shift_multiplier;
     float32_vec3_t position, velocity, direction;
-} snd_source_params_t;
+    bool position_relative_to_listener, looping;
+} snd_source_params_t __attribute__((packed));
 
 snd_result_t snd_init(snd_device_list_t* out_device_list);
 snd_result_t snd_exit(void);
@@ -107,10 +110,11 @@ snd_result_t snd_recording_device_open(uint32_t recording_device_id, snd_format_
 snd_result_t snd_recording_device_close(snd_recording_device_t device);
 snd_result_t snd_recording_start(snd_recording_device_t device);
 snd_result_t snd_recording_stop(snd_recording_device_t device);
+snd_result_t snd_recording_get_nr_samples(snd_recording_device_t device, size_t* nr_samples);
 snd_result_t snd_recording_retrieve_samples_nonblocking(snd_recording_device_t device, void* buffer, size_t nr_samples);
 
 snd_result_t snd_listener_context_create(uint32_t playback_device_id, uint32_t mixing_frequency_Hz, uint32_t refresh_interval_Hz, bool synchronous, uint32_t requested_min_nr_mono_sources, uint32_t requested_min_nr_stereo_sources, snd_listener_context_t* context);
-snd_result_t snd_listener_context_params_get(snd_listener_context_t context, const snd_listener_context_params_t* params);
+snd_result_t snd_listener_context_params_get(snd_listener_context_t context, snd_listener_context_params_t* params);
 snd_result_t snd_listener_context_params_set(snd_listener_context_t context, const snd_listener_context_params_t params);
 snd_result_t snd_listener_context_process(snd_listener_context_t context);
 snd_result_t snd_listener_context_suspend(snd_listener_context_t context);
@@ -121,7 +125,7 @@ snd_result_t snd_buffer_free(snd_listener_context_t context, snd_buffer_t buffer
 
 snd_result_t snd_source_create(snd_listener_context_t context, snd_source_t* source);
 snd_result_t snd_source_delete(snd_listener_context_t context, snd_source_t source);
-snd_result_t snd_source_params_get(snd_listener_context_t context, snd_source_t source, const snd_source_params_t* params);
+snd_result_t snd_source_params_get(snd_listener_context_t context, snd_source_t source, snd_source_params_t* params);
 snd_result_t snd_source_params_set(snd_listener_context_t context, snd_source_t source, const snd_source_params_t params);
 
 snd_result_t snd_source_play_position_set(snd_listener_context_t context, snd_source_t source, snd_source_position_format_t format, float value);

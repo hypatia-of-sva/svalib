@@ -1193,28 +1193,62 @@ unicode_result_t unicode_get_character_properties(uint32_t codepoint, unicode_pr
     return UNICODE_OK;
 }
 
-/* returns 0 for invalid codepoint and byte-size of codepoint otherwise */
+/* returns 0 for invalid codepoint and byte-size of data being read otherwise */
 size_t unicode_strbuf_read_codepoint(strbuf_t buf, size_t offset, unicode_encoding_t encoding, uint32_t* out) {
     if(buf.str == NULL || offset >= buf.len || out == NULL) return 0;
     switch(encoding) {
     case CHAR_ENCODING_UTF8:
+        utf8proc_int32_t i;
+        utf8proc_ssize_t s = utf8proc_iterate(&buf.str[offset], buf.len - offset, &i);
+        if(s > 0 && i >= 0) {
+            out[0] = i; return s;
+        } else { return 0; }
     case CHAR_ENCODING_UTF16LE:
+        uint16_t word1;
+        if(mem_read_uint16le(buf.str, buf.len, offset, &word1)) {
+            if(word1 <= 0xD7FF || word1 >= 0xE000) {
+                out[0] = word1; return 2;
+            } else if (word1 >= 0xD800 && word1 <= 0xDBFF) {
+                uint16_t word2;
+                if(mem_read_uint16le(buf.str, buf.len, offset, &word2) && (word1 >= 0xDC00 && word1 <= 0xDFFF)) {
+                    out[0] = 0x10000 | ((word1 - 0xD800) << 10) | (word2 - 0xDC00);
+                    return 4;
+                } else { return 0; }
+            } else { return 0; }
+        } else { return 0; }
     case CHAR_ENCODING_UTF16BE:
+        uint16_t word1;
+        if(mem_read_uint16be(buf.str, buf.len, offset, &word1)) {
+            if(word1 <= 0xD7FF || word1 >= 0xE000) {
+                out[0] = word1; return 2;
+            } else if (word1 >= 0xD800 && word1 <= 0xDBFF) {
+                uint16_t word2;
+                if(mem_read_uint16be(buf.str, buf.len, offset, &word2) && (word1 >= 0xDC00 && word1 <= 0xDFFF)) {
+                    out[0] = 0x10000 | ((word1 - 0xD800) << 10) | (word2 - 0xDC00);
+                    return 4;
+                } else { return 0; }
+            } else { return 0; }
+        } else { return 0; }
     case CHAR_ENCODING_UTF32LE:
+        uint32_t codepoint = 0;
+        if(mem_read_uint32le(buf.str, buf.len, offset, &codepoint) && codepoint < 0x110000) {          
+            out[0] = codepoint; return 4;
+        } else { return 0; }
     case CHAR_ENCODING_UTF32BE:
-    case CHAR_ENCODING_UTF16:
-    case CHAR_ENCODING_UTF32:
-        if(buf.len - offset < 4) return 0;
-        uint32_t codepoint = ((uint32_t*) (&(buf.str[offset])))[0];
-        if(codepoint > 0x10ffff) return 0;
-        else {
-            out[0] = codepoint;
-            return 4;
-        }
+        uint32_t codepoint = 0;
+        if(mem_read_uint32be(buf.str, buf.len, offset, &codepoint) && codepoint < 0x110000) {
+            out[0] = codepoint; return 4;
+        } else { return 0; }
     default:
         return 0;
     }
 }
+
+/* returns 0 for invalid codepoint and byte-size of data being written otherwise */
+size_t unicode_strbuf_write_codepoint(strbuf_t buf, size_t offset, unicode_encoding_t encoding, uint32_t codepoint) {
+    
+}
+
 unicode_result_t unicode_strbuf_transform_encoding(strbuf_t* new_buf, strbuf_t buf, char_encoding_t old_encoding, char_encoding_t new_encoding);
 
 unicode_result_t unicode_get_next_char
@@ -1224,7 +1258,6 @@ unicode_result_t unicode_get_next_char
 utf8proc_utf8class
 
 
-utf8proc_iterate
 
 utf8proc_encode_char
 

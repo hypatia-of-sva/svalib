@@ -1060,7 +1060,8 @@ typedef struct unicode_properties_t {
 
 unicode_result_t unicode_get_character_properties(uint32_t codepoint, unicode_properties_t* out_properties);
 
-size_t unicode_strbuf_read_codepoint(strbuf_t buf, size_t offset, unicode_encoding_t encoding, uint32_t* out); /* returns 0 for invalid codepoint and byte-size of codepoint otherwise */
+size_t unicode_strbuf_read_codepoint(strbuf_t buf, size_t offset, unicode_encoding_t encoding, uint32_t* out); /* returns 0 for invalid codepoint and byte-size of data being read otherwise */
+size_t unicode_strbuf_write_codepoint(strbuf_t buf, size_t offset, unicode_encoding_t encoding, uint32_t codepoint); /* returns 0 for invalid codepoint and byte-size of data being written otherwise */
 unicode_result_t unicode_strbuf_transform_encoding(strbuf_t* new_buf, strbuf_t buf, char_encoding_t old_encoding, char_encoding_t new_encoding);
 
 /*
